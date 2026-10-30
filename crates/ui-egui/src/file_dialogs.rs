@@ -49,6 +49,7 @@ pub fn open_filters(purpose: &str) -> &'static [(&'static str, &'static [&'stati
         "picture" => &[("Pictures", PICTURES)],
         "font" => &[("Fonts", wordcraft_fonts::FONT_FILE_EXTS)],
         "sources" => &[("Word sources", &["xml"]), ("All files", &["*"])],
+        "vba_source" => &[("VBA source", &["bas", "cls", "tvform"]), ("All files", &["*"])],
         "recipients" => &[("Recipient lists", wordcraft_engine::cmd::mailings::RECIPIENT_EXTENSIONS), ("All files", &["*"])],
         _ => &[("Documents", DOCUMENTS), ("Word document", &["docx"]), ("All files", &["*"])],
     }
@@ -79,6 +80,10 @@ pub(crate) enum AfterPick {
     ForDialog,
     /// Put the picked document into the Compare dialog (original or revised, #412).
     ComparePath { revised: bool },
+    #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+    VbaImport { document: u64 },
+    #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+    VbaWrite { document: u64, name: String, text: String, source: Option<(wordcraft_vba::SourceId, u64)> },
 }
 
 /// What to do once Save As has written the document.
@@ -290,6 +295,34 @@ impl WordApp {
                 crate::dialogs_review::set_compare_path(self, revised, path);
                 Ok(json!({"picked": true}))
             }
+            #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+            AfterPick::VbaImport { document } => {
+                let Some(path) = picked else { return Ok(json!({"cancelled": true})) };
+                if document != self.session.document_id() {
+                    return Err("the document for this VBA import is no longer active".into());
+                }
+                let bytes = wordcraft_engine::io::read_regular_file_within(std::path::Path::new(&path), wordcraft_vba::MAX_SOURCE_IMPORT_BYTES)
+                    .ok_or("VBA import requires a readable regular file within the source size limit")?;
+                let source = String::from_utf8(bytes).map_err(|error| format!("VBA source must be UTF-8: {error}"))?;
+                let name = std::path::Path::new(&path).file_name().and_then(|name| name.to_str()).ok_or("invalid VBA source filename")?;
+                self.vba_project.as_mut().ok_or("VBA project is closed")?.import_source(name, &source)?;
+                self.status(format!("Imported VBA source {name}"));
+                Ok(json!({"imported": name}))
+            }
+            #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+            AfterPick::VbaWrite { document, name, text, source } => {
+                let Some(path) = picked else { return Ok(json!({"cancelled": true})) };
+                if document != self.session.document_id() {
+                    return Err("the document for this VBA save is no longer active".into());
+                }
+                std::fs::write(&path, text.as_bytes()).map_err(|error| format!("could not write VBA source: {error}"))?;
+                if let Some((id, revision)) = source {
+                    self.vba_project.as_mut().ok_or("VBA project is closed")?.mark_source_saved(id, revision)?;
+                }
+                let label = std::path::Path::new(&path).file_name().and_then(|name| name.to_str()).unwrap_or(&name);
+                self.status(format!("Saved VBA source {label}"));
+                Ok(json!({"saved": true}))
+            }
             AfterPick::Export { ext } => {
                 let Some(path) = picked else { return Ok(json!({"cancelled": true})) };
                 let r = if ext == "png" {
@@ -491,7 +524,77 @@ mod tests {
     use crate::Services;
     use wordcraft_engine::Session;
 
+    #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+    fn app_with_vba_project() -> (WordApp, Shown) {
+        let (mut app, shown) = async_app();
+        let mut host = wordcraft_vba::WordHost::new(&mut app.session, &mut app.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        app.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        (app, shown)
+    }
+
+    #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+    #[test]
+    fn vba_source_import_save_export_and_return_use_wordcraft_picker() {
+        let dir = scratch("vba-sources");
+        let source_path = dir.join("Module1.bas");
+        std::fs::write(&source_path, "Public Sub Main()\n    ActiveDocument.Content.Text = \"must not auto-run\"\nEnd Sub")
+            .expect("write import fixture");
+        let (mut app, shown) = app_with_vba_project();
+        app.route_vba_source_request(wordcraft_vba::SourceRequest::Import);
+        assert_eq!(shown.borrow()[0].0, FileDialogRequest::Open { purpose: "vba_source".into() });
+        answer(&shown, Some(&source_path.to_string_lossy()));
+        app.poll_file_dialog().expect("dialog response").expect("source import");
+        assert_eq!(app.vba_project.as_ref().expect("project").ide().modules.len(), 1);
+        assert_eq!(body_text(&app), "", "import stores source without running it");
+
+        let project = app.vba_project.as_mut().expect("project");
+        project.ide_mut().set_text("Public Sub Main()\nEnd Sub".into()).expect("edit source");
+        let module = project.ide().modules.first().expect("module");
+        let (id, revision) = (module.id, module.revision);
+        let save_path = dir.join("Saved.bas");
+        app.route_vba_source_request(wordcraft_vba::SourceRequest::Save {
+            id,
+            name: "Saved.bas".into(),
+            text: "Public Sub Main()\nEnd Sub".into(),
+            revision,
+        });
+        assert_eq!(shown.borrow()[0].0, FileDialogRequest::Save { name: "Saved.bas".into(), dir: None });
+        answer(&shown, Some(&save_path.to_string_lossy()));
+        app.poll_file_dialog().expect("dialog response").expect("source save");
+        assert_eq!(std::fs::read_to_string(&save_path).expect("saved source"), "Public Sub Main()\nEnd Sub");
+        assert!(!app.vba_project.as_ref().expect("project").ide().modules[0].dirty());
+
+        let export_path = dir.join("Exported.bas");
+        app.route_vba_source_request(wordcraft_vba::SourceRequest::Export {
+            name: "Exported.bas".into(),
+            text: "Public Sub Exported()\nEnd Sub".into(),
+        });
+        answer(&shown, Some(&export_path.to_string_lossy()));
+        app.poll_file_dialog().expect("dialog response").expect("source export");
+        assert_eq!(std::fs::read_to_string(&export_path).expect("exported source"), "Public Sub Exported()\nEnd Sub");
+        app.route_vba_source_request(wordcraft_vba::SourceRequest::ReturnToHost);
+        assert!(!app.vba_open);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     const UNSAVED: &str = "My unsaved novel chapter";
+
+    #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+    #[test]
+    fn vba_import_refuses_oversized_and_non_regular_files_before_project_mutation() {
+        let dir = scratch("vba-bounded-import");
+        let oversized = dir.join("Oversized.bas");
+        std::fs::File::create(&oversized).expect("fixture").set_len(wordcraft_vba::MAX_SOURCE_IMPORT_BYTES + 1).expect("oversized sparse fixture");
+        let (mut app, _) = app_with_vba_project();
+        for path in [&dir, &oversized] {
+            let document = app.session.document_id();
+            let result = app.finish_pick(AfterPick::VbaImport { document }, Some(path.to_string_lossy().into_owned()));
+            assert!(result.is_err(), "{} must be refused", path.display());
+            assert!(app.vba_project.as_ref().expect("project").ide().modules.is_empty());
+        }
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     /// Original Word 97 compound file: one compressed text piece, built from MS-DOC's FIB/Clx.
     fn legacy_word_bytes() -> Vec<u8> {

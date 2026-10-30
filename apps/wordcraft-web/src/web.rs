@@ -9,9 +9,6 @@ use wordcraft_engine::Session;
 use wordcraft_ui_egui::async_saves::{AsyncSaves, SaveOutcome};
 use wordcraft_ui_egui::{Inbox, Services, WordApp};
 
-const DOC_EXTS: &[&str] = &["docx", "docm", "dotx", "dotm", "doc", "dot", "odt", "rtf", "txt", "md", "html", "htm", "tex", "json", "xml"];
-const IMAGE_EXTS: &[&str] = &["png", "jpg", "jpeg", "gif", "webp", "bmp", "wmf", "emf"];
-const RECIPIENT_EXTS: &[&str] = wordcraft_engine::cmd::mailings::RECIPIENT_EXTENSIONS;
 mod font_store;
 const CANVAS_ID: &str = "wordcraft_canvas";
 const LOADING_ID: &str = "wordcraft_loading";
@@ -257,15 +254,10 @@ fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: Asyn
         open_async: Some(Box::new(move |purpose: &str| {
             let inbox = open_inbox.clone();
             let ctx = ctx.clone();
-            let dialog = if purpose == "picture" {
-                rfd::AsyncFileDialog::new().add_filter("Pictures", IMAGE_EXTS)
-            } else if purpose == "font" {
-                rfd::AsyncFileDialog::new().add_filter("Fonts", wordcraft_fonts::FONT_FILE_EXTS)
-            } else if purpose == "recipients" {
-                rfd::AsyncFileDialog::new().add_filter("Recipient lists", RECIPIENT_EXTS)
-            } else {
-                rfd::AsyncFileDialog::new().add_filter("Documents", DOC_EXTS)
-            };
+            let mut dialog = rfd::AsyncFileDialog::new();
+            for (name, extensions) in wordcraft_ui_egui::open_filters(purpose) {
+                dialog = dialog.add_filter(*name, extensions);
+            }
             let many = purpose == "font";
             wasm_bindgen_futures::spawn_local(async move {
                 // Add Font takes every selected file (#1789); the others one.

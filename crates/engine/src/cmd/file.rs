@@ -89,7 +89,7 @@ pub fn specs() -> Vec<CommandSpec> {
         CommandSpec::new("file.new", "New", "File", new).key("Mod+N").params(r#"{"template"?: "blank|sample|letter|resume|report"}"#).pure(),
         CommandSpec::new("file.open", "Open", "File", open)
             .key("Mod+O / Mod+F12 / Mod+Alt+F2")
-            .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document)}"#)
+            .params(r#"{"path": string, "data"?: base64 (the file's bytes; `path` then only names it), "password"?: string (for a password-protected Word document), "beside"?: bool (keep even an untouched active document)}"#)
             .pure(),
         CommandSpec::new("file.save", "Save", "File", save)
             .key("Mod+S / Shift+F12 / Alt+Shift+F2")
@@ -274,9 +274,9 @@ fn open(s: &mut Session, v: &Value) -> CmdResult {
         doc.styles.default_chr.lang = Some(lang.clone());
     }
     match s.used_because() {
-        None => s.set_document(doc),
-        Some(why) => {
-            log::info!("file.open: opened beside document {}, not in its place: {why}", s.document_id());
+        None if p::bool(v, "beside") != Some(true) => s.set_document(doc),
+        why => {
+            log::info!("file.open: opened beside document {}, not in its place: {}", s.document_id(), why.unwrap_or("explicit beside policy"));
             s.add_opened_document(doc);
         }
     }

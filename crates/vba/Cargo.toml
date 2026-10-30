@@ -1,0 +1,18 @@
+[package]
+name = "wordcraft-vba"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "WordCraft's bounded VBA-to-document bridge"
+
+[lints]
+workspace = true
+
+[dependencies]
+wordcraft-doc = { workspace = true }
+wordcraft-engine = { workspace = true }
+thiserror = { workspace = true }
+serde_json = { workspace = true }
+vba-foreign = { workspace = true }
+vba-ide = { workspace = true }
+vba-values = { workspace = true }

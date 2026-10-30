@@ -7,6 +7,10 @@ publish = false
 default-run = "wordcraft"
 description = "WordCraft desktop app"
 
+[features]
+default = []
+vba = ["wordcraft-ui-egui/vba"]
+
 [lints]
 workspace = true
 

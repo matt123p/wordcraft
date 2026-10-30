@@ -6,6 +6,10 @@ edition.workspace = true
 license.workspace = true
 publish = false
 
+[features]
+default = []
+vba = ["wordcraft-ui-egui/vba"]
+
 [lints]
 workspace = true
 

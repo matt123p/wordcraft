@@ -1,6 +1,6 @@
 # WordCraft architecture
 
-> **Last reviewed:** 2026-10-10 · **Last updated:** 2026-10-10 · **Change:** minor (`proof` is per language: English and Polish; previously major: first committed version; `plan/architecture.md` is local-only) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-10-30 · **Change:** minor (start the optional WordCraft VBA host bridge; main-story position mapping is bounded and isolated in L5) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
 How WordCraft is built today (origin/main `40c5d51`). The longer design notes in
 `plan/architecture.md` are gitignored and local to the original author's machine; this file is the
@@ -8,7 +8,7 @@ committed, current summary. Rules for working in the code are in [`AGENTS.md`](.
 
 ## Layers
 
-~85,600 lines of Rust, 15 crates, 3 apps and `xtask`. Layering is enforced by `cargo xtask layers`:
+~85,600 lines of Rust, 16 crates, 3 apps and `xtask`. Layering is enforced by `cargo xtask layers`:
 a crate may only depend on crates in lower layers, and nothing below L6 depends on egui, eframe,
 winit or rfd.
 
@@ -28,6 +28,7 @@ winit or rfd.
 | L4 | `zotero` | 1.7k | Zotero's word-processor integration protocol answered against a `Session` |
 | L4 | `control-key` | 0.1k | Per-window control-port key files shared by the app and the MCP bridge |
 | L5 | `mcp` | 1.0k | MCP server: every command as a tool; headless or bridged to the running app |
+| L5 | `vba` | new | Optional VBA host bridge: Word document roots, story character positions and bounded mutation routing; tiny-vba remains a separate interpreter dependency |
 | L6 | `ui-egui` | 13.1k | Word-style front end: ribbon, keytips, mini-toolbar, Backstage, canvas, rulers, panes, dialogs, Equation tab, i18n catalogs, themes, control channel, headless `ui_shot` example |
 | apps | `wordcraft` | 1.6k | Desktop app (eframe + wgpu; logging, window geometry, file associations) |
 | apps | `wordcraft-cli` | 0.4k | `convert`, `text`, `inspect`, `run`, `commands`, `parity`, `mcp`, `zotero` |

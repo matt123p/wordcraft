@@ -2374,6 +2374,12 @@ fn view(app: &mut WordApp, ui: &mut Ui) {
     });
     group(ui, "Macros", None, app, |ui, app| {
         big(ui, app, "macros", "Macros", "tools.macros", json!({}), false);
+        #[cfg(feature = "vba")]
+        {
+            let enabled = crate::widgets::enabled(app, "ui.vba");
+            let resp = big(ui, app, "macros", "Visual Basic", "ui.vba", json!({}), false);
+            resp.widget_info(|| egui::WidgetInfo::selected(egui::Role::Button, enabled, app.vba_open, "Visual Basic"));
+        }
     });
     group(ui, "Templates", None, app, |ui, app| {
         big(ui, app, "documentTemplate", "Templates", "tools.templates", json!({}), false);

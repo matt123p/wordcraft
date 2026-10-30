@@ -5778,6 +5778,125 @@ dependencies = [
 ]
 
 [[package]]
+name = "vba-compiler"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+ "vba-foreign",
+ "vba-ir",
+ "vba-semantics",
+ "vba-syntax",
+ "vba-values",
+]
+
+[[package]]
+name = "vba-debug"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+ "vba-vm",
+]
+
+[[package]]
+name = "vba-diagnostics"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+
+[[package]]
+name = "vba-foreign"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+ "vba-values",
+]
+
+[[package]]
+name = "vba-ide"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-compiler",
+ "vba-debug",
+ "vba-diagnostics",
+ "vba-foreign",
+ "vba-ir",
+ "vba-runtime",
+ "vba-syntax",
+ "vba-values",
+ "vba-vm",
+]
+
+[[package]]
+name = "vba-ir"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+ "vba-values",
+]
+
+[[package]]
+name = "vba-runtime"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+ "vba-values",
+]
+
+[[package]]
+name = "vba-semantics"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+ "vba-foreign",
+ "vba-runtime",
+ "vba-syntax",
+ "vba-values",
+]
+
+[[package]]
+name = "vba-syntax"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+]
+
+[[package]]
+name = "vba-ui-egui"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "egui",
+ "vba-ide",
+]
+
+[[package]]
+name = "vba-values"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+]
+
+[[package]]
+name = "vba-vm"
+version = "0.1.0"
+source = "git+https://github.com/matt123p/tiny-vba?rev=3f077dcb378536530b48ff54b962bab706740735#3f077dcb378536530b48ff54b962bab706740735"
+dependencies = [
+ "vba-diagnostics",
+ "vba-foreign",
+ "vba-ir",
+ "vba-runtime",
+ "vba-values",
+]
+
+[[package]]
 name = "vello_common"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6927,6 +7046,7 @@ dependencies = [
  "serde_json",
  "sys-locale",
  "toml",
+ "vba-ui-egui",
  "web-time",
  "wordcraft-doc",
  "wordcraft-engine",
@@ -6934,9 +7054,23 @@ dependencies = [
  "wordcraft-geom",
  "wordcraft-layout",
  "wordcraft-render",
+ "wordcraft-vba",
  "wordcraft-zotero",
  "zbus",
  "zip 3.0.0",
+]
+
+[[package]]
+name = "wordcraft-vba"
+version = "0.11.0"
+dependencies = [
+ "serde_json",
+ "thiserror 2.0.21",
+ "vba-foreign",
+ "vba-ide",
+ "vba-values",
+ "wordcraft-doc",
+ "wordcraft-engine",
 ]
 
 [[package]]

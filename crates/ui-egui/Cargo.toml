@@ -5,6 +5,10 @@ edition.workspace = true
 license.workspace = true
 description = "WordCraft egui front end (Word-style ribbon UI); swappable: nothing below depends on it"
 
+[features]
+default = []
+vba = ["dep:wordcraft-vba", "dep:vba-ui-egui"]
+
 [lints]
 workspace = true
 
@@ -25,6 +29,8 @@ wordcraft-render = { workspace = true }
 wordcraft-engine = { workspace = true }
 wordcraft-zotero = { workspace = true }
 egui = { workspace = true, features = ["default_fonts", "monochrome_emoji_fonts"] }
+wordcraft-vba = { workspace = true, optional = true }
+vba-ui-egui = { git = "https://github.com/matt123p/tiny-vba", rev = "3f077dcb378536530b48ff54b962bab706740735", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }

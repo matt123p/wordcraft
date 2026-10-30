@@ -574,6 +574,15 @@ fn migrate_units(v: &mut Value) {
     }
 }
 
+#[cfg(feature = "vba")]
+struct VbaDocumentProject {
+    host: wordcraft_vba::WordHostState,
+    project: wordcraft_vba::WordVbaProject,
+    trusted: bool,
+    close_event_pending: Option<(u64, u64, bool)>,
+    save_event_pending: Option<(u64, bool, bool)>,
+}
+
 /// The application.
 pub struct WordApp {
     pub session: Session,
@@ -672,6 +681,26 @@ pub struct WordApp {
     /// Whether egui's own animations were last switched on or off ([`theme::apply_animations`]).
     applied_animations: Option<bool>,
     pub frame_ms: f64,
+    #[cfg(feature = "vba")]
+    vba_host_state: wordcraft_vba::WordHostState,
+    #[cfg(feature = "vba")]
+    vba_project: Option<wordcraft_vba::WordVbaProject>,
+    #[cfg(feature = "vba")]
+    vba_projects: std::collections::BTreeMap<u64, VbaDocumentProject>,
+    #[cfg(feature = "vba")]
+    vba_editor: vba_ui_egui::EditorUi,
+    #[cfg(feature = "vba")]
+    vba_document: u64,
+    #[cfg(feature = "vba")]
+    vba_open: bool,
+    #[cfg(feature = "vba")]
+    vba_trusted: bool,
+    #[cfg(feature = "vba")]
+    vba_import_pending: Option<u64>,
+    #[cfg(feature = "vba")]
+    vba_close_event_pending: Option<(u64, u64, bool)>,
+    #[cfg(feature = "vba")]
+    vba_save_event_pending: Option<(u64, bool, bool)>,
     /// The window title last sent; a viewport command schedules a repaint, so only send changes.
     sent_title: String,
     /// Full screen as last asked of the window, and as the window last reported it (#980).
@@ -866,6 +895,26 @@ impl WordApp {
             system_animations: None,
             applied_animations: None,
             frame_ms: 0.0,
+            #[cfg(feature = "vba")]
+            vba_host_state: Default::default(),
+            #[cfg(feature = "vba")]
+            vba_project: None,
+            #[cfg(feature = "vba")]
+            vba_projects: std::collections::BTreeMap::new(),
+            #[cfg(feature = "vba")]
+            vba_editor: Default::default(),
+            #[cfg(feature = "vba")]
+            vba_document: shown_document,
+            #[cfg(feature = "vba")]
+            vba_open: false,
+            #[cfg(feature = "vba")]
+            vba_trusted: false,
+            #[cfg(feature = "vba")]
+            vba_import_pending: None,
+            #[cfg(feature = "vba")]
+            vba_close_event_pending: None,
+            #[cfg(feature = "vba")]
+            vba_save_event_pending: None,
             quit_requested: false,
             autosave: true,
             zotero: zotero::ZoteroLink::default(),
@@ -1155,6 +1204,23 @@ impl WordApp {
             self.status(e.clone());
             return Err(e);
         }
+        #[cfg(feature = "vba")]
+        self.sync_vba_document();
+        #[cfg(feature = "vba")]
+        let params = {
+            let mut params = params;
+            if id == "file.open"
+                && self.vba_project.as_ref().is_some_and(|project| !project.ide().modules.is_empty())
+                && let Some(arguments) = params.as_object_mut()
+            {
+                arguments.insert("beside".into(), Value::Bool(true));
+            }
+            params
+        };
+        #[cfg(feature = "vba")]
+        if matches!(id, "file.save" | "file.saveAs") && self.dispatch_vba_before_save(id == "file.saveAs")? {
+            return Ok(json!({"saved": false, "cancelled": true}));
+        }
         if let Some(r) = self.ui_command(id, &params) {
             return r;
         }
@@ -1283,6 +1349,8 @@ impl WordApp {
             // Older copies remain available through File > Recover.
             self.recovery_seen = true;
             self.sync_document();
+            #[cfg(feature = "vba")]
+            self.sync_vba_document();
         }
         // An explicit save to the document's own file lets AutoSave keep writing there.
         if let Ok(v) = &r
@@ -1359,6 +1427,10 @@ impl WordApp {
         };
         if document != self.session.document_id() {
             return Err("the document the prompt asked about has been replaced".into());
+        }
+        #[cfg(feature = "vba")]
+        if choice == SaveChoice::Cancel && then == "file.close" {
+            self.vba_close_event_pending = None;
         }
         // Don't Save is the user's say-so to discard the changes, which Close otherwise refuses.
         let mut params = params;
@@ -1600,6 +1672,18 @@ impl WordApp {
         if let Some(e) = control::close_refused(self, "file.close", params) {
             return Err(e.into());
         }
+        #[cfg(feature = "vba")]
+        if self.dispatch_vba_before_close()? {
+            let name = self.prompt_name();
+            self.dialog = Some(dialogs::Dialog::SaveChanges {
+                name,
+                then: "file.close".into(),
+                params: params.clone(),
+                document: self.session.document_id(),
+                message: String::new(),
+            });
+            return Ok(json!({"pending": "saveChanges"}));
+        }
         let last = self.session.documents().len() <= 1;
         if params.get("quit").and_then(Value::as_bool) == Some(true) {
             if last {
@@ -1611,13 +1695,21 @@ impl WordApp {
                 self.quit_requested = true;
                 return Ok(json!({"quit": true}));
             }
+            #[cfg(feature = "vba")]
+            let closing = self.session.document_id();
             self.close_shown_document()?;
+            #[cfg(feature = "vba")]
+            self.forget_vba_project(closing);
             return Ok(self.ask_before_quit());
         }
         if !self.has_document() {
             return Ok(json!({"closed": false}));
         }
+        #[cfg(feature = "vba")]
+        let closing = self.session.document_id();
         self.close_shown_document()?;
+        #[cfg(feature = "vba")]
+        self.forget_vba_project(closing);
         self.recovery_seen = true;
         if last {
             self.no_document = Some(self.session.document_id());
@@ -1629,6 +1721,152 @@ impl WordApp {
             self.ui.backstage = false;
         }
         Ok(json!({"closed": true}))
+    }
+
+    #[cfg(feature = "vba")]
+    fn forget_vba_project(&mut self, document: u64) {
+        self.vba_projects.remove(&document);
+        self.vba_close_event_pending = None;
+        self.vba_save_event_pending = None;
+        if self.vba_document == document {
+            self.vba_project = None;
+            self.vba_host_state = Default::default();
+            self.vba_trusted = false;
+            self.vba_document = 0;
+        }
+    }
+
+    #[cfg(feature = "vba")]
+    fn dispatch_vba_before_close(&mut self) -> Result<bool, String> {
+        let document = self.session.document_id();
+        if !self.vba_trusted {
+            self.vba_close_event_pending = None;
+            return Ok(false);
+        }
+        if let Some((pending_document, start_rev, notified)) = self.vba_close_event_pending
+            && pending_document == document
+        {
+            let completed = self.vba_project.as_ref().is_some_and(wordcraft_vba::WordVbaProject::is_completed);
+            if completed {
+                if !notified {
+                    self.vba_close_event_pending = Some((document, start_rev, true));
+                    let cancelled = self.vba_project.as_mut().and_then(|project| project.take_boolean_callback_output(0)) == Some(true);
+                    if cancelled {
+                        self.vba_close_event_pending = None;
+                        return Err("Word VBA BeforeClose cancelled closing the document.".into());
+                    }
+                    return Ok(self.session.rev() != start_rev);
+                }
+                self.vba_close_event_pending = None;
+                return Ok(false);
+            }
+            if self.vba_project.as_ref().is_some_and(wordcraft_vba::WordVbaProject::is_reset) {
+                self.vba_close_event_pending = None;
+                return Ok(false);
+            }
+            if notified {
+                self.vba_close_event_pending = None;
+                return Ok(false);
+            }
+            self.vba_open = true;
+            return Err("Word VBA BeforeClose is waiting; finish or reset the VBA procedure before closing.".into());
+        }
+        let handler = self.vba_project.as_ref().and_then(|project| {
+            if project.has_document_event("ThisDocument", "Document_Close") {
+                Some(("Document_Close", Vec::new()))
+            } else if project.has_document_event("ThisDocument", "Document_BeforeClose") {
+                // Retain the explicitly documented WordCraft extension. Word's cancellable
+                // close event belongs to Application; ThisDocument has Document_Close().
+                Some(("Document_BeforeClose", vec![wordcraft_vba::Value::Boolean(false)]))
+            } else {
+                None
+            }
+        });
+        let Some((handler, arguments)) = handler else {
+            return Ok(false);
+        };
+        let start_rev = self.session.rev();
+        self.vba_open = true;
+        let mut host = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state)?;
+        host.set_authorized(true);
+        let mode = self.vba_project.as_mut().ok_or("Word VBA project closed during BeforeClose")?.dispatch_document_event_with_arguments(
+            "ThisDocument",
+            handler,
+            arguments,
+            &mut host,
+        )?;
+        let project = self.vba_project.as_ref().ok_or("Word VBA project closed during BeforeClose")?;
+        if project.is_completed() {
+            self.vba_close_event_pending = Some((document, start_rev, true));
+            let cancelled = self.vba_project.as_mut().and_then(|project| project.take_boolean_callback_output(0)) == Some(true);
+            if cancelled {
+                self.vba_close_event_pending = None;
+                return Err("Word VBA BeforeClose cancelled closing the document.".into());
+            }
+            Ok(self.session.rev() != start_rev)
+        } else if project.is_waiting() {
+            self.vba_close_event_pending = Some((document, start_rev, false));
+            Err(format!("Word VBA BeforeClose is waiting ({mode:?}); finish or reset the VBA procedure before closing."))
+        } else {
+            Err(format!("Word VBA BeforeClose ended in {mode:?}; the document remains open."))
+        }
+    }
+
+    #[cfg(feature = "vba")]
+    fn dispatch_vba_before_save(&mut self, save_as_ui: bool) -> Result<bool, String> {
+        let document = self.session.document_id();
+        if !self.vba_trusted {
+            self.vba_save_event_pending = None;
+            return Ok(false);
+        }
+        if let Some((pending_document, pending_save_as_ui, notified)) = self.vba_save_event_pending
+            && pending_document == document
+        {
+            let completed = self.vba_project.as_ref().is_some_and(wordcraft_vba::WordVbaProject::is_completed);
+            if completed {
+                if !notified {
+                    self.vba_save_event_pending = Some((document, pending_save_as_ui, true));
+                    let cancelled = self.vba_project.as_mut().and_then(|project| project.take_boolean_callback_output(1)) == Some(true);
+                    if cancelled {
+                        self.vba_save_event_pending = None;
+                    }
+                    return Ok(cancelled);
+                }
+                self.vba_save_event_pending = None;
+            } else if self.vba_project.as_ref().is_some_and(wordcraft_vba::WordVbaProject::is_reset) {
+                self.vba_save_event_pending = None;
+            } else {
+                self.vba_open = true;
+                return Err("Word VBA BeforeSave is waiting or has stopped; finish or reset the VBA procedure before saving.".into());
+            }
+        }
+        let has_handler = self.vba_project.as_ref().is_some_and(|project| project.has_document_event("ThisDocument", "Document_BeforeSave"));
+        if !has_handler {
+            return Ok(false);
+        }
+        self.vba_open = true;
+        let mut host = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state)?;
+        host.set_authorized(true);
+        let mode = self.vba_project.as_mut().ok_or("Word VBA project closed during BeforeSave")?.dispatch_document_event_with_arguments(
+            "ThisDocument",
+            "Document_BeforeSave",
+            vec![wordcraft_vba::Value::Boolean(save_as_ui), wordcraft_vba::Value::Boolean(false)],
+            &mut host,
+        )?;
+        let project = self.vba_project.as_ref().ok_or("Word VBA project closed during BeforeSave")?;
+        if project.is_completed() {
+            self.vba_save_event_pending = Some((document, save_as_ui, true));
+            let cancelled = self.vba_project.as_mut().and_then(|project| project.take_boolean_callback_output(1)) == Some(true);
+            if cancelled {
+                self.vba_save_event_pending = None;
+            }
+            Ok(cancelled)
+        } else if project.is_waiting() || project.is_running() {
+            self.vba_save_event_pending = Some((document, save_as_ui, false));
+            Err(format!("Word VBA BeforeSave is waiting ({mode:?}); finish or reset the VBA procedure before saving."))
+        } else {
+            Err(format!("Word VBA BeforeSave ended in {mode:?}; the document was not saved."))
+        }
     }
 
     fn after_command(&mut self, id: &str) {
@@ -1830,6 +2068,11 @@ impl WordApp {
                     self.ui.backstage = false;
                 }
                 json!({"tab": self.ui.tab})
+            }
+            #[cfg(feature = "vba")]
+            "ui.vba" => {
+                self.vba_open = p.get("open").and_then(Value::as_bool).unwrap_or(!self.vba_open);
+                json!({"open": self.vba_open})
             }
             "ui.backstage" => {
                 self.ui.backstage = p.get("value").and_then(Value::as_bool).unwrap_or(!self.ui.backstage);
@@ -2830,6 +3073,188 @@ impl WordApp {
         }
     }
 
+    #[cfg(feature = "vba")]
+    fn sync_vba_document(&mut self) {
+        let document = self.session.document_id();
+        if self.vba_document != document {
+            if self.vba_document != 0
+                && self.session.is_open(self.vba_document)
+                && let Some(project) = self.vba_project.take()
+            {
+                self.vba_projects.insert(
+                    self.vba_document,
+                    VbaDocumentProject {
+                        host: std::mem::take(&mut self.vba_host_state),
+                        project,
+                        trusted: self.vba_trusted,
+                        close_event_pending: self.vba_close_event_pending.take(),
+                        save_event_pending: self.vba_save_event_pending.take(),
+                    },
+                );
+            }
+            if let Some(saved) = self.vba_projects.remove(&document) {
+                self.vba_host_state = saved.host;
+                self.vba_project = Some(saved.project);
+                self.vba_trusted = saved.trusted;
+                self.vba_close_event_pending = saved.close_event_pending;
+                self.vba_save_event_pending = saved.save_event_pending;
+            } else {
+                self.vba_project = None;
+                self.vba_host_state = Default::default();
+                self.vba_trusted = false;
+                self.vba_close_event_pending = None;
+                self.vba_save_event_pending = None;
+            }
+            self.vba_document = document;
+        }
+        let session = &self.session;
+        self.vba_projects.retain(|document, _| session.is_open(*document));
+    }
+
+    #[cfg(feature = "vba")]
+    fn vba_window(&mut self, ctx: &egui::Context, tokens: theme::Tokens) {
+        self.sync_vba_document();
+        if !self.vba_open || !self.has_document() {
+            return;
+        }
+        let mut host = match wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state) {
+            Ok(host) => host,
+            Err(error) => {
+                log::warn!("VBA host could not bind to the active document: {error}");
+                return;
+            }
+        };
+        if self.vba_project.is_none() {
+            match wordcraft_vba::WordVbaProject::new(&host) {
+                Ok(project) => self.vba_project = Some(project),
+                Err(error) => {
+                    log::warn!("VBA project could not initialize: {error}");
+                    return;
+                }
+            }
+        }
+        let project = match self.vba_project.as_mut() {
+            Some(project) => project,
+            None => return,
+        };
+        let editor = &mut self.vba_editor;
+        let ui_theme = vba_ui_egui::Theme {
+            dark: tokens.dark,
+            chrome: tokens.panel,
+            editor: tokens.input,
+            text: tokens.text,
+            muted: tokens.text_dim,
+            border: tokens.border,
+            accent: tokens.accent,
+            ..vba_ui_egui::Theme::light()
+        };
+        let mut open = self.vba_open;
+        let mut trusted = self.vba_trusted;
+        let mut source_requests = Vec::new();
+        egui::Window::new(tl!("Visual Basic")).open(&mut open).default_size([960.0, 680.0]).vscroll(false).show(ctx, |ui| {
+            ui.checkbox(&mut trusted, tl!("Trust this document's VBA and allow it to edit this document"));
+            host.set_authorized(trusted);
+            let commands = editor.show(ui, project.ide(), ui_theme);
+            for command in commands {
+                if let Err(error) = vba_ui_egui::apply(project.ide_mut(), command, &mut host) {
+                    log::warn!("VBA editor command failed: {error}");
+                }
+            }
+            source_requests.extend(project.take_source_requests());
+            if let Err(error) = project.advance(&mut host) {
+                log::warn!("VBA execution stopped: {error}");
+            }
+            source_requests.extend(project.take_source_requests());
+            if project.is_running() {
+                ui.ctx().request_repaint();
+            }
+        });
+        self.vba_open = open;
+        self.vba_trusted = trusted;
+        for request in source_requests {
+            self.route_vba_source_request(request);
+        }
+    }
+
+    #[cfg(feature = "vba")]
+    #[cfg(not(target_arch = "wasm32"))]
+    fn route_vba_source_request(&mut self, request: wordcraft_vba::SourceRequest) {
+        use crate::file_dialogs::{AfterPick, FileDialogRequest};
+        let document = self.session.document_id();
+        let request = match request {
+            wordcraft_vba::SourceRequest::Import => {
+                let after = AfterPick::VbaImport { document };
+                if matches!(self.ask_file(FileDialogRequest::Open { purpose: "vba_source".into() }, after), crate::file_dialogs::Asked::Busy) {
+                    self.status("Finish the open file dialog before importing VBA source.");
+                }
+                return;
+            }
+            wordcraft_vba::SourceRequest::Save { id, name, text, revision } => {
+                let source = Some((id, revision));
+                (FileDialogRequest::Save { name: name.clone(), dir: None }, AfterPick::VbaWrite { document, name, text, source })
+            }
+            wordcraft_vba::SourceRequest::Export { name, text } => {
+                (FileDialogRequest::Save { name: name.clone(), dir: None }, AfterPick::VbaWrite { document, name, text, source: None })
+            }
+            wordcraft_vba::SourceRequest::ReturnToHost => {
+                self.vba_open = false;
+                return;
+            }
+            wordcraft_vba::SourceRequest::ConfirmClose => {
+                self.status("Save or discard modified VBA source before closing the project.");
+                return;
+            }
+        };
+        let (picker, after) = request;
+        if matches!(self.ask_file(picker, after), crate::file_dialogs::Asked::Busy) {
+            self.status("Finish the open file dialog before working with VBA source.");
+        }
+    }
+
+    #[cfg(all(feature = "vba", target_arch = "wasm32"))]
+    fn route_vba_source_request(&mut self, request: wordcraft_vba::SourceRequest) {
+        match request {
+            wordcraft_vba::SourceRequest::Import => {
+                if let Some(open) = &self.services.open_async {
+                    open("vba_source");
+                    self.vba_import_pending = Some(self.session.document_id());
+                } else {
+                    self.status("VBA source picking is unavailable in this browser host.");
+                }
+            }
+            wordcraft_vba::SourceRequest::Save { id, name, text, revision } => self.download_vba_source(&name, &text, Some((id, revision))),
+            wordcraft_vba::SourceRequest::Export { name, text } => self.download_vba_source(&name, &text, None),
+            wordcraft_vba::SourceRequest::ReturnToHost => self.vba_open = false,
+            wordcraft_vba::SourceRequest::ConfirmClose => {
+                self.status("Save or discard modified VBA source before closing the project.");
+            }
+        }
+    }
+
+    #[cfg(feature = "vba")]
+    #[cfg(target_arch = "wasm32")]
+    fn download_vba_source(&mut self, name: &str, text: &str, source: Option<(wordcraft_vba::SourceId, u64)>) {
+        let result = self
+            .services
+            .download
+            .as_ref()
+            .ok_or_else(|| "source downloads are unavailable".to_owned())
+            .and_then(|download| download(name, text.as_bytes()));
+        match result {
+            Ok(()) => {
+                if let Some((id, revision)) = source
+                    && let Some(project) = self.vba_project.as_mut()
+                    && let Err(error) = project.mark_source_saved(id, revision)
+                {
+                    self.status(format!("Source was downloaded but remains modified: {error}"));
+                    return;
+                }
+                self.status(format!("Downloaded VBA source {name}"));
+            }
+            Err(error) => self.status(format!("Could not download VBA source: {error}")),
+        }
+    }
+
     /// Lay out the drawn window. A command that brings another window's state in (New, Open,
     /// Switch Windows) ends this window's drawing for the frame: the rest would be the other
     /// window's.
@@ -2862,6 +3287,8 @@ impl WordApp {
             backstage::forget_save_as_error(&ctx);
         }
         self.paint_window(ui, &ctx, t);
+        #[cfg(feature = "vba")]
+        self.vba_window(&ctx, t);
         if !moved(self) {
             self.show_overlays(ui, &ctx);
         }
@@ -3092,6 +3519,32 @@ impl WordApp {
         let mut placed_picture = false;
         for (name, bytes) in files {
             let lower = name.to_ascii_lowercase();
+            #[cfg(feature = "vba")]
+            if self.vba_import_pending.is_some() && [".bas", ".cls", ".tvform"].iter().any(|ext| lower.ends_with(ext)) {
+                let document = self.vba_import_pending.take();
+                if document != Some(self.session.document_id()) {
+                    self.status("The document for this VBA import is no longer active.");
+                    continue;
+                }
+                if bytes.len() as u64 > wordcraft_vba::MAX_SOURCE_IMPORT_BYTES {
+                    self.status("VBA source exceeds the import size limit.");
+                    continue;
+                }
+                match String::from_utf8(bytes) {
+                    Ok(source) => {
+                        if let Some(project) = self.vba_project.as_mut() {
+                            match project.import_source(&name, &source) {
+                                Ok(()) => self.status(format!("Imported VBA source {name}")),
+                                Err(error) => self.status(format!("Could not import VBA source: {error}")),
+                            }
+                        } else {
+                            self.status("The VBA project is closed.");
+                        }
+                    }
+                    Err(error) => self.status(format!("VBA source must be UTF-8: {error}")),
+                }
+                continue;
+            }
             let img = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".wmf", ".emf"].iter().any(|e| lower.ends_with(e));
             // Any recipient file ends the pending picker request, so a later .txt drop opens normally.
             let asked = std::mem::take(&mut self.recipient_list_pending);
@@ -4109,7 +4562,14 @@ mod tests {
         h.get_by_label("Blank document").click();
         h.run_steps(4);
         let a = h.state_mut();
-        assert!(a.has_document() && !a.ui.backstage, "Blank document opens one");
+        assert!(
+            a.has_document() && !a.ui.backstage,
+            "Blank document opens one: has_document={}, backstage={}, current={}, first={}",
+            a.has_document(),
+            a.ui.backstage,
+            a.session.document_id(),
+            first
+        );
         assert_ne!(a.session.document_id(), first);
         assert!(widgets::enabled(a, "format.bold"));
         a.run("text.insert", json!({"text": "Hello"})).unwrap();
@@ -9058,6 +9518,320 @@ mod tests {
         a.services.inbox.as_ref().unwrap().lock().unwrap().push(("drop.png".into(), png_bytes([5, 5, 5, 255])));
         a.drain_inbox();
         assert_eq!(object_count(&mut a), 2);
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn vba_editor_is_closed_by_default_and_opens_from_view_macros() {
+        let a = app();
+        assert!(!a.vba_open, "opening the optional editor must not cover the document by default");
+        let mut h = harness(a);
+        h.state_mut().run("ui.tab", json!({"tab": "View"})).unwrap();
+        h.run_steps(2);
+        if h.query_by_role_and_label(egui::accesskit::Role::Button, "Visual Basic").is_none() {
+            h.get_by_role_and_label(egui::accesskit::Role::Button, "Macros").click();
+            h.run_steps(2);
+        }
+        h.get_by_role_and_label(egui::accesskit::Role::Button, "Visual Basic").click();
+        h.run_steps(2);
+        assert!(h.state().vba_open, "the View > Macros entry opens the shared editor");
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn browser_vba_import_consumes_inbox_source_without_running_it() {
+        let mut a = app();
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        a.vba_import_pending = Some(a.session.document_id());
+        let inbox: Inbox = Inbox::default();
+        inbox
+            .lock()
+            .unwrap()
+            .push(("Module1.bas".into(), b"Public Sub Main()\n    ActiveDocument.Content.Text = \"must not run\"\nEnd Sub".to_vec()));
+        a.services.inbox = Some(inbox.clone());
+
+        a.drain_inbox();
+
+        assert!(a.vba_import_pending.is_none());
+        assert_eq!(inbox.lock().unwrap().len(), 0);
+        assert_eq!(a.vba_project.as_ref().expect("project").ide().modules.len(), 1);
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "");
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn browser_vba_import_cannot_attach_to_a_different_document() {
+        let mut a = app();
+        let first = a.session.document_id();
+        let host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("host");
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("project"));
+        a.vba_import_pending = Some(first);
+        a.execute("file.new", json!({})).expect("open another document while the picker waits");
+        let inbox: Inbox = Inbox::default();
+        inbox.lock().unwrap().push(("Module1.bas".into(), b"Public Sub Main()\nEnd Sub".to_vec()));
+        a.services.inbox = Some(inbox.clone());
+        a.drain_inbox();
+        assert!(a.vba_import_pending.is_none());
+        assert!(inbox.lock().unwrap().is_empty());
+        assert!(a.vba_project.is_none(), "the picker result must not attach source to the new document");
+        a.session.activate(first).expect("activate original");
+        a.sync_vba_document();
+        assert!(a.vba_project.as_ref().expect("original project").ide().modules.is_empty(), "a refused transfer is inert");
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn trusted_document_close_runs_before_document_is_removed() {
+        let mut a = app();
+        let document = a.session.document_id();
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        a.vba_trusted = true;
+        a.vba_project
+            .as_mut()
+            .expect("VBA project")
+            .import_source(
+                "ThisDocument.cls",
+                "Attribute VB_Name = \"ThisDocument\"\nPrivate Sub Document_Close()\n    Me.Content.Text = \"close callback ran\"\n    Application.NoSuchMember\nEnd Sub",
+            )
+            .expect("import document module");
+
+        let result = a.run("file.close", json!({"force": true}));
+
+        assert!(result.is_err(), "a failing Document_Close callback prevents the close under WordCraft's error policy");
+        assert_eq!(a.session.document_id(), document, "the original document remains open");
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "close callback ran");
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn document_before_close_can_cancel_removal_after_mutating_the_document() {
+        let mut a = app();
+        let document = a.session.document_id();
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        a.vba_trusted = true;
+        a.vba_project
+            .as_mut()
+            .expect("VBA project")
+            .import_source(
+                "ThisDocument.cls",
+                "Attribute VB_Name = \"ThisDocument\"\nPrivate Sub Document_BeforeClose(Cancel As Boolean)\n    ActiveDocument.Content.Text = \"kept open\"\n    Cancel = True\nEnd Sub",
+            )
+            .expect("import document module");
+
+        assert!(a.run("file.close", json!({"force": true})).is_err(), "Cancel prevents close");
+
+        assert_eq!(a.session.document_id(), document, "the original document remains open");
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "kept open", "earlier callback edits remain live");
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn before_close_mutations_get_a_save_decision_without_replaying_the_event() {
+        let mut a = app();
+        let document = a.session.document_id();
+        let dir = scratch("vba-before-close");
+        let path = dir.join("before-close.docx");
+        a.run("file.saveAs", json!({"path": path.to_string_lossy()})).expect("save initial document");
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        a.vba_trusted = true;
+        a.vba_project
+            .as_mut()
+            .expect("VBA project")
+            .import_source(
+                "ThisDocument.cls",
+                "Attribute VB_Name = \"ThisDocument\"\nPrivate attempts As Integer\nPrivate Sub Document_BeforeClose(Cancel As Boolean)\n    attempts = attempts + 1\n    If attempts = 1 Then\n        ActiveDocument.Content.Text = \"!\"\n    Else\n        ActiveDocument.Content.Text = \"!!\"\n    End If\nEnd Sub",
+            )
+            .expect("import document module");
+
+        assert_eq!(a.run("file.close", json!({"force": true})).unwrap(), json!({"pending": "saveChanges"}));
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "!");
+        assert!(a.dialog.is_some(), "callback edits receive a fresh save decision");
+        a.run("ui.saveChanges", json!({"answer": "cancel"})).expect("cancel this close attempt");
+        assert_eq!(a.session.document_id(), document);
+        assert!(a.vba_close_event_pending.is_none(), "cancel starts a new close attempt later");
+        assert_eq!(a.run("file.close", json!({"force": true})).unwrap(), json!({"pending": "saveChanges"}));
+        a.run("ui.saveChanges", json!({"answer": "dontSave"})).expect("allow the next close attempt");
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "!!", "a new close attempt gets one new callback");
+        a.run("ui.saveChanges", json!({"answer": "save"})).expect("save callback edit and close");
+        assert_ne!(a.session.document_id(), document);
+        let saved = wordcraft_engine::io::open_path(&path).expect("saved file");
+        assert_eq!(saved.plain_text(wordcraft_doc::StoryRef::Body), "!!", "the second attempt ran once, then the updated document was saved");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn trusted_document_before_save_mutations_are_included_in_the_saved_file() {
+        let mut a = app();
+        let dir = scratch("vba-before-save");
+        let path = dir.join("before-save.docx");
+        a.run("file.saveAs", json!({"path": path.to_string_lossy()})).expect("save initial document");
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        a.vba_trusted = true;
+        a.vba_project
+            .as_mut()
+            .expect("VBA project")
+            .import_source(
+                "ThisDocument.cls",
+                "Attribute VB_Name = \"ThisDocument\"\nPrivate Sub Document_BeforeSave(ByVal SaveAsUI As Boolean, Cancel As Boolean)\n    ActiveDocument.Content.Text = \"written by BeforeSave\"\n    Cancel = SaveAsUI\nEnd Sub",
+            )
+            .expect("import document module");
+
+        a.run("file.save", json!({})).expect("BeforeSave runs before the save");
+
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "written by BeforeSave");
+        assert!(!a.session.dirty, "the callback's mutation is included in the save");
+        let saved = wordcraft_engine::io::open_path(&path).expect("saved file");
+        assert_eq!(saved.plain_text(wordcraft_doc::StoryRef::Body), "written by BeforeSave");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn failing_document_before_save_keeps_prior_edits_and_does_not_write_them() {
+        let mut a = app();
+        let dir = scratch("vba-before-save-failure");
+        let path = dir.join("before-save-failure.docx");
+        a.run("file.saveAs", json!({"path": path.to_string_lossy()})).expect("save initial document");
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        a.vba_trusted = true;
+        a.vba_project
+            .as_mut()
+            .expect("VBA project")
+            .import_source(
+                "ThisDocument.cls",
+                "Attribute VB_Name = \"ThisDocument\"\nPrivate Sub Document_BeforeSave(ByVal SaveAsUI As Boolean, Cancel As Boolean)\n    ActiveDocument.Content.Text = \"partial edit\"\n    Application.NoSuchMember\nEnd Sub",
+            )
+            .expect("import document module");
+
+        assert!(a.run("file.save", json!({})).is_err(), "a failing callback blocks this save");
+
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "partial edit", "earlier callback side effects remain live");
+        assert!(a.session.dirty, "the partial edit remains unsaved");
+        let saved = wordcraft_engine::io::open_path(&path).expect("original saved file");
+        assert_eq!(saved.plain_text(wordcraft_doc::StoryRef::Body), "", "the failed callback did not write its partial effects");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn document_before_save_can_cancel_a_save_as() {
+        let mut a = app();
+        let dir = scratch("vba-before-save-cancel");
+        let path = dir.join("before-save-cancel.docx");
+        a.run("file.saveAs", json!({"path": path.to_string_lossy()})).expect("save initial document");
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        a.vba_project = Some(wordcraft_vba::WordVbaProject::new(&host).expect("VBA project"));
+        a.vba_trusted = true;
+        a.vba_project
+            .as_mut()
+            .expect("VBA project")
+            .import_source(
+                "ThisDocument.cls",
+                "Attribute VB_Name = \"ThisDocument\"\nPrivate Sub Document_BeforeSave(ByVal SaveAsUI As Boolean, Cancel As Boolean)\n    Cancel = SaveAsUI\nEnd Sub",
+            )
+            .expect("import document module");
+
+        assert_eq!(
+            a.run("file.saveAs", json!({"path": path.to_string_lossy()})).expect("cancelled Save As"),
+            json!({"saved": false, "cancelled": true})
+        );
+
+        let saved = wordcraft_engine::io::open_path(&path).expect("original saved file");
+        assert_eq!(saved.plain_text(wordcraft_doc::StoryRef::Body), "", "Cancel prevents the Save As write");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn opening_a_file_keeps_an_untouched_document_that_owns_vba_source() {
+        let mut a = app();
+        let first = a.session.document_id();
+        let dir = scratch("vba-open-retains-project");
+        let path = dir.join("other.txt");
+        std::fs::write(&path, "another document").expect("file fixture");
+        let host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("host");
+        let mut project = wordcraft_vba::WordVbaProject::new(&host).expect("project");
+        project.import_source("Module1.bas", "Public Sub Main()\nEnd Sub").expect("source");
+        a.vba_project = Some(project);
+        assert!(a.session.is_untouched_blank());
+        a.execute("file.open", json!({"path": path.to_string_lossy()})).expect("open file beside source project");
+        assert!(a.session.is_open(first), "source work keeps its original document alive");
+        assert_ne!(a.session.document_id(), first);
+        a.session.activate(first).expect("activate source document");
+        a.sync_vba_document();
+        assert_eq!(a.vba_project.as_ref().expect("retained project").ide().modules.len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn closed_vba_editor_keeps_save_handlers_and_trust_with_their_document() {
+        let mut a = app();
+        let first = a.session.document_id();
+        let dir = scratch("vba-hidden-document-switch");
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");
+        host.set_authorized(true);
+        let mut project = wordcraft_vba::WordVbaProject::new(&host).expect("first project");
+        project.import_source("ThisDocument.cls", "Attribute VB_Name = \"ThisDocument\"\nPrivate Sub Document_BeforeSave(ByVal SaveAsUI As Boolean, Cancel As Boolean)\nActiveDocument.Content.Text = \"first document handler\"\nEnd Sub").expect("handler");
+        a.vba_project = Some(project);
+        a.vba_trusted = true;
+        assert!(!a.vba_open);
+
+        let second = a.session.add_document(wordcraft_doc::Document::from_text("second document"));
+        a.session.activate(second).expect("activate second");
+        let second_path = dir.join("second.docx");
+        a.run("file.saveAs", json!({"path": second_path.to_string_lossy()})).expect("save second");
+        assert!(!a.vba_trusted, "a new document does not inherit the previous document's trust");
+        assert_eq!(wordcraft_engine::io::open_path(&second_path).expect("second file").plain_text(wordcraft_doc::StoryRef::Body), "second document");
+
+        a.session.activate(first).expect("activate first");
+        let first_path = dir.join("first.docx");
+        a.run("file.saveAs", json!({"path": first_path.to_string_lossy()})).expect("save first");
+        assert!(a.vba_trusted, "the original project's trust survives switching with the editor closed");
+        assert_eq!(
+            wordcraft_engine::io::open_path(&first_path).expect("first file").plain_text(wordcraft_doc::StoryRef::Body),
+            "first document handler"
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[cfg(feature = "vba")]
+    #[test]
+    fn vba_projects_follow_open_documents_when_the_editor_switches() {
+        let mut a = app();
+        a.run("ui.vba", json!({"open": true})).expect("open editor");
+        let first = a.session.document_id();
+        let ctx = egui::Context::default();
+        let draw_editor = |app: &mut WordApp| {
+            ctx.run_ui(egui::RawInput::default(), |ui| app.vba_window(ui.ctx(), theme::Tokens::light())).drop_without_applying_deltas();
+        };
+        draw_editor(&mut a);
+        a.vba_project.as_mut().expect("first project").import_source("Module1.bas", "Public Sub Main()\nEnd Sub").expect("first source");
+        a.vba_trusted = true;
+
+        let second = a.session.add_document(wordcraft_doc::Document::new());
+        a.session.activate(second).expect("activate second document");
+        draw_editor(&mut a);
+        assert!(a.vba_project.as_ref().expect("second project").ide().modules.is_empty());
+
+        a.session.activate(first).expect("reactivate first document");
+        draw_editor(&mut a);
+        assert_eq!(a.vba_project.as_ref().expect("restored first project").ide().modules.len(), 1);
+        assert!(a.vba_trusted, "trust is retained with the document project");
     }
 
     fn paste_harness(a: WordApp) -> egui_kittest::Harness<'static, WordApp> {

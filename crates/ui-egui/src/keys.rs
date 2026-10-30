@@ -120,6 +120,8 @@ fn ui_shortcut(key: Key, m: Modifiers) -> Option<(&'static str, Value)> {
     let alt_only = m.alt && !m.command && !m.ctrl && !m.mac_cmd && !m.shift;
     let mac_cmd_alt = cfg!(target_os = "macos") && m.mac_cmd && m.alt && !m.ctrl && !m.shift;
     match key {
+        #[cfg(feature = "vba")]
+        Key::F11 if alt_only => Some(("ui.vba", json!({}))),
         Key::Q if alt_only && !cfg!(target_os = "macos") => Some(("ui.dialog", json!({"name": "commands"}))),
         Key::R if mac_cmd_alt => Some(("ui.collapseRibbon", json!({}))),
         // Ctrl+F1 collapses or expands the ribbon, as in Word for Windows (#1678). Not on macOS,
@@ -134,9 +136,9 @@ fn dispatch(app: &mut WordApp, key: Key, m: Modifiers) -> bool {
     let reg = app.session.registry.clone();
     let name = key_name(key);
     let bound = name.and_then(|n| app.session.keymap.resolve(&reg, &combo(m, n, true)));
-    // Ctrl+F1 collapses the ribbon only when the user hasn't given it to a command (#1678); the
+    // Ctrl+F1 and the optional editor's Alt+F11 give way to user assignments; the
     // other interface shortcuts (Alt+Q, ⌘⌥R) keep their place ahead of the keymap.
-    if let Some((id, params)) = ui_shortcut(key, m).filter(|_| key != Key::F1 || bound.is_none()) {
+    if let Some((id, params)) = ui_shortcut(key, m).filter(|_| !matches!(key, Key::F1 | Key::F11) || bound.is_none()) {
         let _ = app.run(id, params);
         return true;
     }
@@ -1604,6 +1606,20 @@ mod tests {
             assert!(!a.session.view.focus_mode, "the binding doesn't run");
             assert!(matches!(a.dialog, Some(crate::dialogs::Dialog::Commands { .. })), "Alt+Q opens the command search");
         }
+    }
+
+    #[test]
+    #[cfg(feature = "vba")]
+    fn alt_f11_opens_the_editor_and_respects_a_host_key_assignment() {
+        let mut a = WordApp::new(wordcraft_engine::Session::new(wordcraft_doc::Document::new()), crate::Services::default());
+        let alt = Modifiers { alt: true, ..Default::default() };
+        assert!(dispatch(&mut a, Key::F11, alt));
+        assert!(a.vba_open);
+        a.run("ui.vba", json!({"open": false})).expect("return to document");
+        a.session.keymap = wordcraft_engine::keymap::KeyMap::from_value(&json!({"assigned": {"Alt+F11": "view.focus"}}));
+        assert!(dispatch(&mut a, Key::F11, alt));
+        assert!(a.session.view.focus_mode);
+        assert!(!a.vba_open, "a user assignment takes precedence over the editor's opening shortcut");
     }
 
     #[test]

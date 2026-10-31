@@ -466,6 +466,25 @@ impl WordVbaProject {
             .map(|(name, root)| vba_foreign::Import { name: name.into(), root: root.into(), member: None, kind: InvokeKind::Get })
             .collect();
         ide.configure_host(imports, host.roots(), api_catalog()).map_err(|error| error.to_string())?;
+        // M6.7/M6.8: declare the document profile's implicit `Me` members for the
+        // `ThisDocument` module, its instance type, and each host global's result
+        // type. Metadata only; code aids never invoke host members.
+        let document_members = [("thisdocument", api_catalog().iter().filter(|item| item.supported && item.owner == "Document").map(|item| item.name.to_ascii_lowercase()).collect::<Vec<_>>())]
+            .into_iter()
+            .map(|(module, members)| (module.to_string(), members))
+            .collect();
+        let document_types = [("thisdocument", "Document")].into_iter().map(|(name, ty)| (name.to_string(), ty.to_string())).collect();
+        let host_types = [
+            ("Application", "Application"),
+            ("ActiveDocument", "Document"),
+            ("Selection", "Selection"),
+            ("ThisDocument", "Document"),
+        ]
+        .into_iter()
+        .map(|(name, ty)| (name.to_string(), ty.to_string()))
+        .collect();
+        ide.configure_document_context(document_members, document_types, host_types)
+            .map_err(|error| error.to_string())?;
         ide.configure_reference_bindings(
             ReferenceSet::new(vec![ReferenceLibrary {
                 name: "Word".into(),
@@ -497,6 +516,13 @@ impl WordVbaProject {
             module.kind == vba_ide::ModuleKind::Document
                 && module.code_name.as_deref().is_some_and(|name| name.eq_ignore_ascii_case(code_name))
                 && module.procedures.iter().any(|procedure| procedure.name.eq_ignore_ascii_case(handler))
+        })
+    }
+
+    fn has_standard_entry(&self, entry: &str) -> bool {
+        self.ide.modules.iter().any(|module| {
+            module.kind == vba_ide::ModuleKind::Standard
+                && module.procedures.iter().any(|procedure| procedure.name.eq_ignore_ascii_case(entry))
         })
     }
 
@@ -588,6 +614,12 @@ impl WordVbaProject {
     }
 
     pub fn run(&mut self, entry: &str, host: &mut WordHost<'_>) -> Result<Mode, String> {
+        // Word's macro list can run a `ThisDocument` procedure directly. Deliver
+        // it through the host-authorized, owner-bound document path so `Me`
+        // binds to the live document exactly as during lifecycle events.
+        if !self.has_standard_entry(entry) && self.has_document_event("ThisDocument", entry) {
+            return self.dispatch_document_event("ThisDocument", entry, host);
+        }
         self.ide.entry = entry.into();
         if !self.batch_active {
             host.begin_batch()?;

@@ -372,3 +372,43 @@ fn paused_macro_refuses_to_resume_after_an_external_edit() {
     assert_eq!(project.advance(&mut host).expect("resume tick"), Mode::Failed);
     assert_eq!(session.doc.plain_text(StoryRef::Body), " userstart");
 }
+
+#[test]
+fn ordinary_run_of_a_thisdocument_procedure_binds_the_live_owner() {
+    let mut session = Session::new(Document::from_text(""));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("Word host");
+    host.set_authorized(true);
+    let mut project = WordVbaProject::new(&host).expect("project");
+    project
+        .import_source(
+            "ThisDocument.cls",
+            "Attribute VB_Name = \"ThisDocument\"\nPublic Sub FillTitle()\n    Content.Text = \"implicit\"\nEnd Sub",
+        )
+        .expect("document module");
+    // Word's macro list runs ThisDocument procedures with Me bound to the live document.
+    let mode = project.run("FillTitle", &mut host).expect("ordinary run");
+    assert_eq!(mode, Mode::Completed);
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "implicit");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+}
+
+#[test]
+fn thisdocument_implicit_members_resolve_to_the_owner_during_events() {
+    let mut session = Session::new(Document::from_text(""));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("Word host");
+    host.set_authorized(true);
+    let mut project = WordVbaProject::new(&host).expect("project");
+    project
+        .import_source(
+            "ThisDocument.cls",
+            "Attribute VB_Name = \"ThisDocument\"\nPrivate Sub Document_Open()\n    Range(0, 3).Text = \"abc\"\n    Application.ActiveDocument.Range(3, 5).Text = \"de\"\nEnd Sub",
+        )
+        .expect("document module");
+    let mode = project
+        .dispatch_document_event("ThisDocument", "Document_Open", &mut host)
+        .expect("dispatch event");
+    assert_eq!(mode, Mode::Completed);
+    assert_eq!(session.doc.plain_text(StoryRef::Body), "abcde");
+}

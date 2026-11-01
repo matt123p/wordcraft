@@ -138,7 +138,7 @@ Validation against the implemented shared profile (final immutable pin above):
   recorded-member source without exposing metadata in its normal code view.
 - Microsoft Word reference observations remain **NOT_RUN**. The owner has no Word
   installation and no connected session exists. Authored tests are not an Office
-  oracle, and the unavailable requirement has not been waived.
+  oracle, and the fresh-comparison gate is deferred to tiny-vba M8.5 by owner direction.
 
 ## Attribute/code-view integration
 
@@ -166,3 +166,9 @@ on supported plain documents.
 Variant For counters. This removes the reported CopyIngredients counter-type
 diagnostic in the shared compiler; existing positive integral literal-Step
 limits and separate Office host-member coverage still apply.
+
+M6 sign-off update (2026-11-01): the owner accepted the tested M6 integration
+profile and moved fresh Microsoft Excel/Word comparison to tiny-vba M8.5. These
+observations remain NOT_RUN; they no longer block M7 unchanged-document/package
+work. This scheduling decision does not change the supported host profile or
+claim a new Office observation. See tiny-vba ADR 0032.

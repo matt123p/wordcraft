@@ -17,7 +17,7 @@ the shared IDE applies its narrower per-source/project/design budgets afterward.
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
-pin published tiny-vba revision `d40a283699ce0eb0e998493d3443731622050b3c`;
+pin published tiny-vba revision `f680441be2f56249ed88f3e0db3fc8c5489a10d3`;
 manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -161,3 +161,8 @@ received exact raw bytes and then marked Saved. No page errors occurred. The
 rich sample document's attempted Range mutation returned the declared error 5
 plain-story refusal; native authored workflows establish successful host effects
 on supported plain documents.
+
+2026-11-01 language fix: the shared pin now includes implicit/explicit scalar
+Variant For counters. This removes the reported CopyIngredients counter-type
+diagnostic in the shared compiler; existing positive integral literal-Step
+limits and separate Office host-member coverage still apply.

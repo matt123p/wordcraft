@@ -17,7 +17,7 @@ the shared IDE applies its narrower per-source/project/design budgets afterward.
 ## M6 task status
 
 Updated 2026-11-01 after the M6.5–M6.8 completion work. Shared dependency pins
-`9a8b27c8897508cb8e2b514059bb80955fba7b37` (the M6 resolution, `With`, implicit-member
+`9eb3e4111d8a78b88b26d22d26571e86efd93871` (the M6 resolution, `With`, implicit-member
 and localization API), immutable Git revision, no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -114,7 +114,7 @@ an otherwise untouched document when it owns authored VBA source.
 
 ## Verification evidence (2026-11-01 M6 completion run)
 
-Shared dependency pin `9a8b27c8897508cb8e2b514059bb80955fba7b37` (immutable Git
+Shared dependency pin `9eb3e4111d8a78b88b26d22d26571e86efd93871` (immutable Git
 revision; remote availability verified by the cargo update that locked it).
 
 - cargo test -p wordcraft-vba --locked --offline: 3 unit tests and 19 authored integration

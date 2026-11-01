@@ -547,6 +547,11 @@ impl WordApp {
             }
             #[cfg(feature = "vba")]
             "ui.vba" => {
+                // The host handles the opening key. Do not offer the same Alt+F11
+                // to the newly mounted editor as Return to Host in this frame.
+                if let Some(ctx) = &self.ctx {
+                    ctx.input_mut(|input| input.consume_key(egui::Modifiers::ALT, egui::Key::F11));
+                }
                 self.vba_open = p.get("open").and_then(Value::as_bool).unwrap_or(!self.vba_open);
                 json!({"open": self.vba_open})
             }

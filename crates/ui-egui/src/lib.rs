@@ -462,6 +462,13 @@ fn migrate_units(v: &mut Value) {
 }
 
 #[cfg(feature = "vba")]
+struct VbaSourceSave {
+    document: u64,
+    project: u64,
+    source: Option<(wordcraft_vba::SourceId, u64)>,
+    name: String,
+}
+#[cfg(feature = "vba")]
 struct VbaDocumentProject {
     host: wordcraft_vba::WordHostState,
     project: wordcraft_vba::WordVbaProject,
@@ -579,6 +586,10 @@ pub struct WordApp {
     vba_editor: vba_ui_egui::EditorUi,
     #[cfg(feature = "vba")]
     vba_document: u64,
+    #[cfg(feature = "vba")]
+    vba_selection: Option<(u64, wordcraft_engine::Selection)>,
+    #[cfg(feature = "vba")]
+    vba_source_saves: std::collections::BTreeMap<u64, VbaSourceSave>,
     #[cfg(feature = "vba")]
     vba_open: bool,
     #[cfg(feature = "vba")]

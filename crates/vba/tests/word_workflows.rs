@@ -407,3 +407,165 @@ fn thisdocument_implicit_members_resolve_to_the_owner_during_events() {
     assert_eq!(mode, Mode::Completed);
     assert_eq!(session.doc.plain_text(StoryRef::Body), "abcde world");
 }
+
+fn application_project(host: &WordHost<'_>, source: &str) -> WordVbaProject {
+    let mut project = WordVbaProject::new(host).expect("project");
+    project
+        .import_document_source("ThisDocument.cls", "ThisDocument", &format!("Attribute VB_Name = \"ThisDocument\"\n{source}"))
+        .expect("authored document source");
+    project
+}
+
+#[test]
+fn application_before_save_uses_actual_subscription_document_and_cancel_parameter() {
+    use wordcraft_vba::ApplicationEvent;
+    let mut session = Session::new(Document::from_text("original"));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("host");
+    let mut project = application_project(
+        &host,
+        "Private WithEvents app As Word.Application\nPublic Sub Connect()\nSet app=Application\nEnd Sub\nPrivate Sub app_DocumentBeforeSave(ByVal Doc As Word.Document, SaveAsUI As Boolean, Cancel As Boolean)\nIf SaveAsUI Then Doc.Content.Text=\"cancelled save as\"\nCancel=True\nEnd Sub",
+    );
+    assert!(
+        project.dispatch_application_event(ApplicationEvent::DocumentBeforeSave { save_as_ui: true }, &mut host).is_err(),
+        "events require trust"
+    );
+    host.set_authorized(true);
+    assert!(project.dispatch_application_event(ApplicationEvent::DocumentBeforeSave { save_as_ui: true }, &mut host).expect("idle import").is_none());
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "original", "import is inert");
+    assert_eq!(project.run("Connect", &mut host).expect("connect"), Mode::Completed);
+    assert_eq!(
+        project.dispatch_application_event(ApplicationEvent::DocumentBeforeSave { save_as_ui: true }, &mut host).expect("save event"),
+        Some(Mode::Completed)
+    );
+    assert_eq!(project.take_boolean_callback_output(1), Some(true), "Application Cancel is argument 2, not the extension's argument 1");
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "cancelled save as");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(project.take_callback_outputs().is_none());
+}
+
+#[test]
+fn application_close_precedes_document_close_and_cancellation_skips_document_close() {
+    use wordcraft_vba::ApplicationEvent;
+    for cancelled in [false, true] {
+        let mut session = Session::new(Document::from_text(""));
+        let mut state = WordHostState::default();
+        let mut host = WordHost::new(&mut session, &mut state).expect("host");
+        host.set_authorized(true);
+        let source = format!(
+            "Private WithEvents app As Word.Application\nPublic Sub Connect()\nSet app=Application\nEnd Sub\nPrivate Sub app_DocumentBeforeClose(ByVal Doc As Word.Document, Cancel As Boolean)\nDoc.Content.Text=\"application\"\nCancel={}\nEnd Sub\nPrivate Sub Document_Close()\nMe.Content.InsertAfter \" document\"\nEnd Sub",
+            if cancelled { "True" } else { "False" }
+        );
+        let mut project = application_project(&host, &source);
+        assert_eq!(project.run("Connect", &mut host).expect("connect"), Mode::Completed);
+        assert_eq!(project.dispatch_application_event(ApplicationEvent::DocumentBeforeClose, &mut host).expect("close event"), Some(Mode::Completed));
+        assert_eq!(project.take_boolean_callback_output(0), Some(cancelled));
+        assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), if cancelled { "application" } else { "application document" });
+        assert_eq!(host.session_mut().undo_depth(), 1, "both handlers share one undo group");
+    }
+}
+
+#[test]
+fn application_events_preserve_byref_across_connection_order_and_disconnect() {
+    use wordcraft_vba::ApplicationEvent;
+    let mut session = Session::new(Document::from_text(""));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("host");
+    host.set_authorized(true);
+    let mut project = application_project(
+        &host,
+        "Private WithEvents first As Word.Application\nPrivate WithEvents second As Word.Application\nPublic Sub Connect()\nSet second=Application\nSet first=Application\nEnd Sub\nPublic Sub Disconnect()\nSet first=Nothing\nSet second=Nothing\nEnd Sub\nPrivate Sub second_DocumentBeforeSave(ByVal Doc As Word.Document, SaveAsUI As Boolean, Cancel As Boolean)\nDoc.Content.Text=\"second\"\nCancel=True\nSaveAsUI=False\nEnd Sub\nPrivate Sub first_DocumentBeforeSave(ByVal Doc As Word.Document, SaveAsUI As Boolean, Cancel As Boolean)\nIf Cancel And Not SaveAsUI Then Doc.Content.InsertAfter \" first\"\nEnd Sub",
+    );
+    assert_eq!(project.run("Connect", &mut host).expect("connect"), Mode::Completed);
+    assert_eq!(
+        project.dispatch_application_event(ApplicationEvent::DocumentBeforeSave { save_as_ui: true }, &mut host).expect("save event"),
+        Some(Mode::Completed)
+    );
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "second first");
+    assert_eq!(project.take_boolean_callback_output(1), Some(true));
+    assert_eq!(project.run("Disconnect", &mut host).expect("disconnect"), Mode::Completed);
+    assert!(project.dispatch_application_event(ApplicationEvent::DocumentBeforeSave { save_as_ui: true }, &mut host).expect("no handlers").is_none());
+}
+
+#[test]
+fn paused_application_event_resumes_once_and_reset_abandons_the_remainder() {
+    use wordcraft_vba::ApplicationEvent;
+    let mut session = Session::new(Document::from_text(""));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("host");
+    host.set_authorized(true);
+    let mut project = application_project(
+        &host,
+        "Private WithEvents app As Word.Application\nPublic Sub Connect()\nSet app=Application\nEnd Sub\nPrivate Sub app_DocumentBeforeClose(ByVal Doc As Word.Document, Cancel As Boolean)\nDoc.Content.InsertAfter \"once\"\nStop\nCancel=True\nEnd Sub\nPrivate Sub Document_Close()\nMe.Content.Text=\"must not run\"\nEnd Sub",
+    );
+    assert_eq!(project.run("Connect", &mut host).expect("connect"), Mode::Completed);
+    assert_eq!(project.dispatch_application_event(ApplicationEvent::DocumentBeforeClose, &mut host).expect("paused event"), Some(Mode::Break));
+    assert!(project.take_callback_outputs().is_none());
+    project.continue_execution(&mut host).expect("continue");
+    for _ in 0..100 {
+        if project.is_completed() {
+            break;
+        }
+        project.advance(&mut host).expect("advance event");
+    }
+    assert!(project.is_completed());
+    assert_eq!(project.take_boolean_callback_output(0), Some(true));
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "once");
+    assert_eq!(project.dispatch_application_event(ApplicationEvent::DocumentBeforeClose, &mut host).expect("second paused event"), Some(Mode::Break));
+    project.reset(&mut host).expect("reset");
+    assert!(project.take_callback_outputs().is_none());
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "onceonce");
+}
+
+#[test]
+fn recorded_member_metadata_and_blank_document_header_preserve_exact_source() {
+    let mut session = Session::new(Document::from_text("before"));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("host");
+    let mut project = WordVbaProject::new(&host).expect("project");
+    let header = "Attribute VB_Name = \"ThisDocument\"\r\nAttribute VB_PredeclaredId = True\r\nAttribute VB_Exposed = True\r\n";
+    let source = "Attribute VB_Name = \"Recorded\"\r\nPublic Sub Macro2()\r\nAttribute Macro2.VB_ProcData.VB_Invoke_Func = \" \\n14\"\r\nActiveDocument.Content.Text=\"metadata run\"\r\nEnd Sub\r\n";
+    project.import_document_source("ThisDocument.cls", "ThisDocument", header).expect("document import");
+    assert!(vba_ide::editor_text(&project.ide().modules.first().expect("document").text).is_empty());
+    assert_eq!(project.ide().modules.first().expect("document").component_name(), "ThisDocument");
+    project.import_source("Recorded.bas", source).expect("recorded source");
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "before", "imports never execute procedures");
+    host.set_authorized(true);
+    assert_eq!(project.run("Macro2", &mut host).expect("macro"), Mode::Completed);
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "metadata run");
+    assert_eq!(project.ide().active_module().expect("source").text, source);
+    assert_eq!(project.ide().modules.first().expect("document").text, header);
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(host.session_mut().undo());
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "before");
+}
+
+#[test]
+fn shared_ui_first_slice_and_later_slices_share_one_native_undo_batch() {
+    let mut session = Session::new(Document::from_text("before"));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("host");
+    host.set_authorized(true);
+    let mut project = WordVbaProject::new(&host).expect("project");
+    project.import_source("Module1.bas","Public Sub Main()\nDim i As Long\nActiveDocument.Content.Text=\"start\"\nFor i=1 To 3000\nNext i\nActiveDocument.Content.InsertAfter \" end\"\nEnd Sub").expect("source");
+    project.prepare_ui_action(&mut host).expect("prepare before shared UI dispatch");
+    project.ide_mut().dispatch(vba_ide::Action::Run, &mut host).expect("shared UI run action");
+    for _ in 0..64 {
+        project.ide_mut().tick(&mut host).expect("shared UI tick");
+        if host.session_mut().doc.plain_text(StoryRef::Body) == "start" {
+            break;
+        }
+    }
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "start", "shared UI ticks have already edited the document");
+    for _ in 0..100 {
+        if project.is_completed() {
+            break;
+        }
+        project.advance(&mut host).expect("later slices");
+    }
+    assert!(project.is_completed());
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "start end");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(host.session_mut().undo());
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "before");
+}

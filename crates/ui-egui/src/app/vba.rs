@@ -4,6 +4,7 @@ impl WordApp {
     #[cfg(feature = "vba")]
     pub(crate) fn forget_vba_project(&mut self, document: u64) {
         self.vba_projects.remove(&document);
+        self.vba_source_saves.retain(|_, save| save.document != document);
         self.vba_close_event_pending = None;
         self.vba_save_event_pending = None;
         if self.vba_document == document {
@@ -60,19 +61,21 @@ impl WordApp {
                 None
             }
         });
-        let Some((handler, arguments)) = handler else {
+        if self.vba_project.is_none() {
             return Ok(false);
-        };
+        }
         let start_rev = self.session.rev();
         self.vba_open = true;
         let mut host = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state)?;
         host.set_authorized(true);
-        let mode = self.vba_project.as_mut().ok_or("Word VBA project closed during BeforeClose")?.dispatch_document_event_with_arguments(
-            "ThisDocument",
-            handler,
-            arguments,
-            &mut host,
-        )?;
+        let project = self.vba_project.as_mut().ok_or("Word VBA project closed during BeforeClose")?;
+        let mode = if let Some(mode) = project.dispatch_application_event(wordcraft_vba::ApplicationEvent::DocumentBeforeClose, &mut host)? {
+            mode
+        } else if let Some((handler, arguments)) = handler {
+            project.dispatch_document_event_with_arguments("ThisDocument", handler, arguments, &mut host)?
+        } else {
+            return Ok(false);
+        };
         let project = self.vba_project.as_ref().ok_or("Word VBA project closed during BeforeClose")?;
         if project.is_completed() {
             self.vba_close_event_pending = Some((document, start_rev, true));
@@ -82,7 +85,7 @@ impl WordApp {
                 return Err("Word VBA BeforeClose cancelled closing the document.".into());
             }
             Ok(self.session.rev() != start_rev)
-        } else if project.is_waiting() {
+        } else if !project.is_reset() {
             self.vba_close_event_pending = Some((document, start_rev, false));
             Err(format!("Word VBA BeforeClose is waiting ({mode:?}); finish or reset the VBA procedure before closing."))
         } else {
@@ -119,18 +122,26 @@ impl WordApp {
             }
         }
         let has_handler = self.vba_project.as_ref().is_some_and(|project| project.has_document_event("ThisDocument", "Document_BeforeSave"));
-        if !has_handler {
+        if self.vba_project.is_none() {
             return Ok(false);
         }
         self.vba_open = true;
         let mut host = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state)?;
         host.set_authorized(true);
-        let mode = self.vba_project.as_mut().ok_or("Word VBA project closed during BeforeSave")?.dispatch_document_event_with_arguments(
-            "ThisDocument",
-            "Document_BeforeSave",
-            vec![wordcraft_vba::Value::Boolean(save_as_ui), wordcraft_vba::Value::Boolean(false)],
-            &mut host,
-        )?;
+        let project = self.vba_project.as_mut().ok_or("Word VBA project closed during BeforeSave")?;
+        let mode =
+            if let Some(mode) = project.dispatch_application_event(wordcraft_vba::ApplicationEvent::DocumentBeforeSave { save_as_ui }, &mut host)? {
+                mode
+            } else if has_handler {
+                project.dispatch_document_event_with_arguments(
+                    "ThisDocument",
+                    "Document_BeforeSave",
+                    vec![wordcraft_vba::Value::Boolean(save_as_ui), wordcraft_vba::Value::Boolean(false)],
+                    &mut host,
+                )?
+            } else {
+                return Ok(false);
+            };
         let project = self.vba_project.as_ref().ok_or("Word VBA project closed during BeforeSave")?;
         if project.is_completed() {
             self.vba_save_event_pending = Some((document, save_as_ui, true));
@@ -139,7 +150,7 @@ impl WordApp {
                 self.vba_save_event_pending = None;
             }
             Ok(cancelled)
-        } else if project.is_waiting() || project.is_running() {
+        } else if !project.is_reset() {
             self.vba_save_event_pending = Some((document, save_as_ui, false));
             Err(format!("Word VBA BeforeSave is waiting ({mode:?}); finish or reset the VBA procedure before saving."))
         } else {
@@ -185,6 +196,43 @@ impl WordApp {
         self.vba_projects.retain(|document, _| session.is_open(*document));
     }
 
+    /// Coalesce selection changes while a macro is running; notify only an idle trusted project.
+    #[cfg(feature = "vba")]
+    pub(crate) fn notify_vba_selection(&mut self) {
+        self.sync_vba_document();
+        let current = (self.session.document_id(), self.session.sel.clone());
+        let Some(previous) = self.vba_selection.as_ref() else {
+            self.vba_selection = Some(current);
+            return;
+        };
+        if previous == &current {
+            return;
+        }
+        if previous.0 != current.0 || !self.vba_trusted {
+            self.vba_selection = Some(current);
+            return;
+        }
+        let Some(project) = self.vba_project.as_mut() else {
+            self.vba_selection = Some(current);
+            return;
+        };
+        if !project.is_completed() {
+            return;
+        }
+        self.vba_selection = Some(current);
+        let result = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state).and_then(|mut host| {
+            host.set_authorized(true);
+            project.dispatch_application_event(wordcraft_vba::ApplicationEvent::WindowSelectionChange, &mut host)
+        });
+        // A handler's own selection mutation belongs to this notification, not another event.
+        self.vba_selection = Some((self.session.document_id(), self.session.sel.clone()));
+        match result {
+            Err(error) => self.status(error),
+            Ok(Some(_)) if self.vba_project.as_ref().is_some_and(|project| !project.is_completed()) => self.vba_open = true,
+            _ => {}
+        }
+    }
+
     /// The shared VBA editor's floating window, when it is open and a document is showing.
     #[cfg(feature = "vba")]
     pub(crate) fn vba_window(&mut self, ctx: &egui::Context, tokens: theme::Tokens) {
@@ -212,6 +260,7 @@ impl WordApp {
             Some(project) => project,
             None => return,
         };
+        let selection_event = project.selection_event_pending();
         let editor = &mut self.vba_editor;
         let ui_theme = vba_ui_egui::Theme {
             // The shared VBA editor's chrome goes through WordCraft's interface
@@ -233,6 +282,10 @@ impl WordApp {
             ui.checkbox(&mut trusted, crate::tl!("Trust this document's VBA and allow it to edit this document"));
             host.set_authorized(trusted);
             let commands = editor.show(ui, project.ide(), ui_theme);
+            if let Err(error) = project.prepare_ui_action(&mut host) {
+                log::warn!("VBA host batch could not start: {error}");
+                return;
+            }
             for command in commands {
                 if let Err(error) = vba_ui_egui::apply(project.ide_mut(), command, &mut host) {
                     log::warn!("VBA editor command failed: {error}");
@@ -247,6 +300,9 @@ impl WordApp {
                 ui.ctx().request_repaint();
             }
         });
+        if selection_event && !project.selection_event_pending() {
+            self.vba_selection = Some((self.session.document_id(), self.session.sel.clone()));
+        }
         self.vba_open = open;
         self.vba_trusted = trusted;
         for request in source_requests {
@@ -260,6 +316,10 @@ impl WordApp {
         use crate::file_dialogs::{AfterPick, FileDialogRequest};
         let document = self.session.document_id();
         let request = match request {
+            wordcraft_vba::SourceRequest::RenameDocument { .. } => {
+                self.status("Word document code names are host-owned; renaming ThisDocument is unsupported.");
+                return;
+            }
             wordcraft_vba::SourceRequest::Import => {
                 let after = AfterPick::VbaImport { document };
                 if matches!(self.ask_file(FileDialogRequest::Open { purpose: "vba_source".into() }, after), crate::file_dialogs::Asked::Busy) {
@@ -293,6 +353,10 @@ impl WordApp {
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn route_vba_source_request(&mut self, request: wordcraft_vba::SourceRequest) {
         match request {
+            wordcraft_vba::SourceRequest::RenameDocument { .. } => {
+                self.status("Word document code names are host-owned; renaming ThisDocument is unsupported.");
+                return;
+            }
             wordcraft_vba::SourceRequest::Import => {
                 if let Some(open) = &self.services.open_async {
                     open("vba_source");
@@ -311,8 +375,20 @@ impl WordApp {
     }
 
     #[cfg(feature = "vba")]
-    #[cfg(target_arch = "wasm32")]
-    fn download_vba_source(&mut self, name: &str, text: &str, source: Option<(wordcraft_vba::SourceId, u64)>) {
+    #[cfg(any(target_arch = "wasm32", test))]
+    pub(crate) fn download_vba_source(&mut self, name: &str, text: &str, source: Option<(wordcraft_vba::SourceId, u64)>) {
+        if self.vba_source_saves.len() >= 64 {
+            self.status("Finish a pending VBA source save before starting another.");
+            return;
+        }
+        let Some(project) = self.vba_project.as_ref() else {
+            return;
+        };
+        let save = crate::VbaSourceSave { document: self.session.document_id(), project: project.instance(), source, name: name.to_owned() };
+        let saves = self.services.async_saves.clone();
+        if let Some(saves) = &saves {
+            let _ = saves.take_started();
+        }
         let result = self
             .services
             .download
@@ -321,16 +397,49 @@ impl WordApp {
             .and_then(|download| download(name, text.as_bytes()));
         match result {
             Ok(()) => {
-                if let Some((id, revision)) = source
-                    && let Some(project) = self.vba_project.as_mut()
-                    && let Err(error) = project.mark_source_saved(id, revision)
-                {
-                    self.status(format!("Source was downloaded but remains modified: {error}"));
-                    return;
+                if let Some(ticket) = saves.as_ref().and_then(crate::async_saves::AsyncSaves::take_started) {
+                    self.vba_source_saves.insert(ticket, save);
+                    self.status(format!("Saving VBA source {name}"));
+                } else {
+                    self.finish_vba_source_save(save, &crate::async_saves::SaveOutcome::Saved);
                 }
-                self.status(format!("Downloaded VBA source {name}"));
             }
             Err(error) => self.status(format!("Could not download VBA source: {error}")),
+        }
+    }
+    #[cfg(feature = "vba")]
+    pub(crate) fn settle_vba_source_save(&mut self, ticket: u64, outcome: &crate::async_saves::SaveOutcome) -> bool {
+        let Some(save) = self.vba_source_saves.remove(&ticket) else {
+            return false;
+        };
+        self.finish_vba_source_save(save, outcome);
+        true
+    }
+
+    #[cfg(feature = "vba")]
+    fn finish_vba_source_save(&mut self, save: crate::VbaSourceSave, outcome: &crate::async_saves::SaveOutcome) {
+        use crate::async_saves::SaveOutcome;
+        match outcome {
+            SaveOutcome::Cancelled => self.status(format!("VBA source save cancelled: {}", save.name)),
+            SaveOutcome::Failed(error) => self.status(format!("Could not save VBA source {}: {error}", save.name)),
+            SaveOutcome::Saved => {
+                if let Some((id, revision)) = save.source {
+                    let project = if self.vba_document == save.document {
+                        self.vba_project.as_mut()
+                    } else {
+                        self.vba_projects.get_mut(&save.document).map(|saved| &mut saved.project)
+                    };
+                    let result = project
+                        .filter(|project| project.instance() == save.project)
+                        .ok_or_else(|| "the originating project has closed or changed".to_owned())
+                        .and_then(|project| project.mark_source_saved(id, revision));
+                    if let Err(error) = result {
+                        self.status(format!("Source was saved but remains modified: {error}"));
+                        return;
+                    }
+                }
+                self.status(format!("Saved VBA source {}", save.name));
+            }
         }
     }
 }

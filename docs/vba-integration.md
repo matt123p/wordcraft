@@ -16,16 +16,16 @@ the shared IDE applies its narrower per-source/project/design budgets afterward.
 
 ## M6 task status
 
-Updated 2026-11-01 after the M6.5–M6.8 completion work. Shared dependency pins
-`9eb3e4111d8a78b88b26d22d26571e86efd93871` (the M6 resolution, `With`, implicit-member
-and localization API), immutable Git revision, no path override.
+Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
+pin published tiny-vba revision `d40a283699ce0eb0e998493d3443731622050b3c`;
+manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
 |---|---|---|
 | M6.1 Word object/metadata profile, live ranges and character positions | Selected profile implemented | Native Application, Document, Selection and Range objects; matching nominal `Word.*` type descriptors and completion catalogue; UTF-16 positions, optional/named `Document.Range` arguments, live-range edits, owner-bound `Me` forwarding during callbacks and stale-range refusal. Tables and inline objects refuse explicitly. This is a bounded plain-main-story profile. |
-| M6.2 shared editor embedding and source routing | Implemented for the declared profile | The editor starts closed and opens from View > Macros > Visual Basic or Alt+F11. It uses host theme/fonts and shared editor shortcuts; a host Alt+F11 assignment takes precedence when opening. Native/browser save/import/export route through existing services. Imports are bounded, inert and tied to the requesting document; save acknowledgments are revision checked. Source, trust, host handles and pending lifecycle state follow each open document even while the editor is hidden. The shared renderer's chrome now goes through the host localization bridge (`Theme.localize` → WordCraft `i18n::t`), and the translation audit passes with the editor open; the audit exempts the authored default project title and entry name. Translated rows for the shared editor's strings land through craft-i18n separately. Browser picker/inbox logic is unit tested; an end-to-end browser runtime source-transfer observation remains open. Package persistence is M7. |
-| M6.3 document mutations, waits, debugger and event lifecycle | Implemented for the declared profile | Real document mutation, undo grouping, partial effects on failure, fresh runs after user edits, explicit document callbacks, canonical automatic `Document_Close()`, WordCraft save/close cancellation extensions, retry/save ordering, reset/close reuse and shared modal-form wait/resume are covered. Ordinary macro-list runs of a `ThisDocument` procedure now deliver through the host-authorized, owner-bound document path (`WordVbaProject::run` routes non-standard entries), proven with an implicit-member mutation test. Standard Word Application event routing and automatic package Open/New delivery remain absent and are recorded as absent. There is no document calculation engine or asynchronous member in the selected profile. |
-| M6.4 independent workflows and permitted reference observations | Authored workflows complete; observations NOT_RUN | Nineteen authored adapter workflows and three position-map tests use the actual engine/session and shared interpreter, including the M6.7 implicit-member and ordinary-run owner-binding cases. UI workflows cover editor access, document isolation and source routing. Microsoft Word reference observations remain NOT_RUN; no connected Word session was available. These are WordCraft contract tests, not Microsoft oracle results. |
+| M6.2 shared editor embedding and source routing | Implemented for the declared profile | The editor starts closed and opens from View > Macros > Visual Basic or Alt+F11. It uses host theme/fonts and shared editor shortcuts; a host Alt+F11 assignment takes precedence when opening. Native/browser save/import/export route through existing services. Imports are bounded, inert and tied to the requesting document; save acknowledgments are revision checked. Source, trust, host handles and pending lifecycle state follow each open document even while the editor is hidden. The shared renderer's chrome now goes through the host localization bridge (`Theme.localize` → WordCraft `i18n::t`), and the translation audit passes with the editor open; the audit exempts the authored default project title and entry name. Translated rows for the shared editor's strings land through craft-i18n separately. Actual Chromium import/export preserves exact CRLF/Unicode bytes without executing imported source. Asynchronous picker saves acknowledge only successful, revision- and project-instance-matching completion; cancellation/failure retains modified state. Package persistence is M7. |
+| M6.3 document mutations, waits, debugger and event lifecycle | Implemented for the declared profile | Real document mutation, undo grouping, partial effects on failure, fresh runs after user edits, explicit document callbacks, canonical automatic `Document_Close()`, WordCraft save/close cancellation extensions, retry/save ordering, reset/close reuse and shared modal-form wait/resume are covered. Ordinary macro-list runs of a `ThisDocument` procedure now deliver through the host-authorized, owner-bound document path (`WordVbaProject::run` routes non-standard entries), proven with an implicit-member mutation test. Trusted Application BeforeClose/BeforeSave/WindowSelectionChange delivery is implemented through actual live WithEvents subscriptions, with signature validation, ordered ByRef propagation, pause/reset handling and lifecycle tails. Automatic package Open/New delivery remains absent. There is no document calculation engine or asynchronous member in the selected profile. |
+| M6.4 independent workflows and permitted reference observations | Authored workflows complete; observations NOT_RUN | Twenty-five authored adapter workflows and three position-map tests use the actual engine/session and shared interpreter, including the M6.7 implicit-member and ordinary-run owner-binding cases. UI workflows cover editor access, document isolation and source routing. Microsoft Word reference observations remain NOT_RUN; no connected Word session was available. These are WordCraft contract tests, not Microsoft oracle results. |
 | M6.5/M6.7 module-context conformance and document roots | Implemented | WordCraft declares the `ThisDocument` implicit members from its supported catalogue, its instance type and the host globals' result types (`configure_document_context`). Bare `Content`/`Range(...)` inside `ThisDocument` dispatch to the live owning document; bare names that are neither declared nor implicit refuse. The shared-side per-layer record is tiny-vba's `docs/m6-context-resolution-check.md`. |
 | M6.8 host-object member completion | Implemented | Completion types receivers from the declared host import types (`Application.`, `ActiveDocument.`, `Selection.`), call shapes, `Me` and the `ThisDocument` code name, using the same catalogue. Code aids stay read-only and never invoke host members. |
 
@@ -88,7 +88,13 @@ Completed waiting hooks are consumed once on retry. In Word, cancellable
 [DocumentBeforeClose](https://learn.microsoft.com/en-us/office/vba/api/word.application.documentbeforeclose)
 and [DocumentBeforeSave](https://learn.microsoft.com/en-us/office/vba/api/word.application.documentbeforesave)
 belong to Application and include a Document argument. Their WithEvents routing and
-Application selection-change delivery are not implemented here.
+Application selection-change delivery are implemented for explicitly connected,
+trusted in-memory projects. Every handler signature is checked before effects;
+handlers run in connection order and completed ByRef values feed the next handler.
+Pauses/waits keep save/close pending, and Reset or trust revocation clears delivery.
+Application handlers precede the document lifecycle tail; Cancel suppresses it.
+Selection changes are coalesced while busy and do not recursively redeliver changes
+made by the same selection callback, including edits after a debugger pause.
 
 Only trusted, active in-memory projects receive automatic events. Source import
 is inert; opening a package does not yet attach or run source. Explicit host-authorized
@@ -114,36 +120,44 @@ an otherwise untouched document when it owns authored VBA source.
 
 ## Verification evidence (2026-11-01 M6 completion run)
 
-Shared dependency pin `9eb3e4111d8a78b88b26d22d26571e86efd93871` (immutable Git
-revision; remote availability verified by the cargo update that locked it).
+Validation against the implemented shared profile (final immutable pin above):
 
-- cargo test -p wordcraft-vba --locked --offline: 3 unit tests and 19 authored integration
-  workflows passed, including the new M6 cases: ordinary-run `ThisDocument.FillTitle`
-  binds the live owner and its implicit `Content` member mutates the document as one
-  undo step, and `Document_Open` resolves bare `Range(0, 3)` to the owning document
-  (the `abcde world` assertion covers both the implicit call and the explicit
-  `Application.ActiveDocument.Range(3, 5)` follow-up). The earlier coverage holds:
-  Unicode mapping/refusal boundaries, live text mutation, undo grouping, stale handles,
-  frame recreation, failed-macro partial effects and paused external edits, explicit
-  document events, reset/close host reuse and a modal shared-form wait/resume workflow.
-- cargo test -p wordcraft-ui-egui --features vba --locked --offline --lib: 1004 passed,
-  0 failed, 2 ignored — including `i18n::audit::untranslated_interface_text`, which now
-  passes with the editor open. The shared renderer's chrome goes through the host
-  localization bridge (`Theme.localize` → WordCraft `i18n::t`); the shared tiny-vba
-  render regression pins the same contract; and the audit exempts the authored default
-  project title and entry name (`Untitled Project`, `Main`) per the documented
-  authored-data boundary. The 8 before_close/before_save/vba/browser-import extension
-  regressions pass.
-- `cargo check -p wordcraft --features vba --locked --offline`: native application passed.
-- `cargo clippy -p wordcraft-ui-egui --features vba --all-targets --locked --offline -- -D warnings`: passed.
-- Microsoft Word reference observations: NOT_RUN — no connected Word session was
-  available on 2026-10-30 or 2026-11-01; recorded rather than inferred. The browser
-  source-transfer observation also remains open (picker/inbox logic is unit tested and
-  the browser application compiles). Cross-session/package persistence and package
-  round trips remain M7. GridCraft's fork-side evidence is recorded in its
-  `docs/m6-acceptance.md`; the shared per-layer M6.5 record is tiny-vba's
-  `docs/m6-context-resolution-check.md`. Standard Word Application event routing and
-  automatic Open/New package delivery remain absent from the declared profile.
+- `cargo test -p wordcraft-vba --locked --offline` (initial local-patch run, then repeated against the published Git pin):
+  3 position-map unit tests and 25 actual document workflows pass. New cases cover
+  Application events, signature/ByRef/connection behavior, trust, pause/reset,
+  exact recorded-member metadata and single-step undo across multiple VM slices.
+- Full `cargo xtask ci`: all eight stages PASS, including the 17-crate WASM
+  check. Optional VBA UI suite: 1035 PASS, 2 existing ignored. Strict optional-
+  feature Clippy passes against the final Git pin; the VBA-enabled browser app
+  builds. The new UI regressions cover asynchronous source-save
+  success/cancel/failure/stale completion, actual Alt+F11 frame routing,
+  Application save/close decisions and selection callbacks resumed after a pause.
+- Chromium exercised the actual WordCraft WASM app: source import was inert and
+  fallback export bytes matched the original CRLF/Unicode source exactly. A rebuilt
+  browser run also imported blank ThisDocument metadata and exported the exact
+  recorded-member source without exposing metadata in its normal code view.
+- Microsoft Word reference observations remain **NOT_RUN**. The owner has no Word
+  installation and no connected session exists. Authored tests are not an Office
+  oracle, and the unavailable requirement has not been waived.
 
-The 2026-10-30 evidence is retained in the git history of this file; its failing
-translation-audit gate is resolved by this update.
+## Attribute/code-view integration
+
+The shared editor parses the exact recorded `VB_Invoke_Func` metadata shape and
+omits it from normal code while retaining raw source for export. Attribute-only
+`ThisDocument` source opens as blank code; explorer/Properties show the code name
+separately from the source filename. Descriptions and Instancing are read-only;
+View exposes a read-only raw metadata inspector. WordCraft refuses document
+code-name rename requests explicitly. ThisDocument is host-owned and imported
+project identities must not change without package writeback support.
+
+Cross-session/package persistence and binary project writeback remain M7; no M7
+implementation was started. GridCraft's evidence is in its `docs/m6-acceptance.md`.
+
+Rebuilt-browser follow-up: Chromium confirmed inert attribute-only ThisDocument
+import, exact Recorded.bas CRLF/Unicode export, and visible procedure rename
+updating the hidden attribute target. With only the OS picker/writable boundary
+mocked, pending and cancelled saves retained Modified; successful write/close
+received exact raw bytes and then marked Saved. No page errors occurred. The
+rich sample document's attempted Range mutation returned the declared error 5
+plain-story refusal; native authored workflows establish successful host effects
+on supported plain documents.

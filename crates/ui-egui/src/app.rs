@@ -141,6 +141,10 @@ impl WordApp {
             #[cfg(feature = "vba")]
             vba_document: shown_document,
             #[cfg(feature = "vba")]
+            vba_selection: None,
+            #[cfg(feature = "vba")]
+            vba_source_saves: Default::default(),
+            #[cfg(feature = "vba")]
             vba_open: false,
             #[cfg(feature = "vba")]
             vba_trusted: false,
@@ -453,6 +457,8 @@ impl WordApp {
             backstage::forget_save_as_error(&ctx);
         }
         self.paint_window(ui, &ctx, t);
+        #[cfg(feature = "vba")]
+        self.notify_vba_selection();
         #[cfg(feature = "vba")]
         self.vba_window(&ctx, t);
         if !moved(self) {

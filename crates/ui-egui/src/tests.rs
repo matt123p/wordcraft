@@ -7499,3 +7499,184 @@ fn vba_projects_follow_open_documents_when_the_editor_switches() {
     assert_eq!(a.vba_project.as_ref().expect("restored first project").ide().modules.len(), 1);
     assert!(a.vba_trusted, "trust is retained with the document project");
 }
+
+#[cfg(feature = "vba")]
+fn connect_application_events(a: &mut WordApp, handlers: &str) {
+    a.sync_vba_document();
+    let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("host");
+    host.set_authorized(true);
+    let mut project = wordcraft_vba::WordVbaProject::new(&host).expect("project");
+    project.import_document_source("ThisDocument.cls", "ThisDocument", &format!("Attribute VB_Name = \"ThisDocument\"\nPrivate WithEvents app As Word.Application\nPublic Sub Connect()\nSet app=Application\nEnd Sub\n{handlers}")).expect("authored handlers");
+    project.run("Connect", &mut host).expect("connect events");
+    a.vba_project = Some(project);
+    a.vba_trusted = true;
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn application_before_save_cancels_the_real_save_without_writing() {
+    let mut a = app();
+    connect_application_events(
+        &mut a,
+        "Private Sub app_DocumentBeforeSave(ByVal Doc As Word.Document, SaveAsUI As Boolean, Cancel As Boolean)\nDoc.Content.Text=\"kept unsaved\"\nCancel=True\nEnd Sub",
+    );
+    let dir = scratch("application-before-save");
+    let path = dir.join("cancelled.docx");
+    let result = a.run("file.saveAs", json!({"path": path.to_string_lossy()})).expect("cancelled save");
+    assert_eq!(result.get("cancelled").and_then(Value::as_bool), Some(true));
+    assert!(!path.exists());
+    assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "kept unsaved");
+    let _ = std::fs::remove_dir_all(dir);
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn application_before_close_cancels_removal_and_does_not_run_document_close() {
+    let mut a = app();
+    let document = a.session.document_id();
+    connect_application_events(
+        &mut a,
+        "Private Sub app_DocumentBeforeClose(ByVal Doc As Word.Document, Cancel As Boolean)\nDoc.Content.Text=\"kept open\"\nCancel=True\nEnd Sub\nPrivate Sub Document_Close()\nMe.Content.Text=\"must not run\"\nEnd Sub",
+    );
+    assert!(a.run("file.close", json!({"force": true})).is_err());
+    assert_eq!(a.session.document_id(), document);
+    assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "kept open");
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn application_selection_change_notifies_once_and_untrusted_projects_are_inert() {
+    let mut a = app();
+    a.session.doc = wordcraft_doc::Document::from_text("abc");
+    connect_application_events(&mut a, "Private Sub app_WindowSelectionChange(ByVal Sel As Word.Selection)\nSel.Range.Text=\"!\"\nEnd Sub");
+    a.notify_vba_selection();
+    a.session.run("select.all", &json!({})).expect("select all");
+    a.notify_vba_selection();
+    assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "!");
+    let rev = a.session.rev();
+    a.notify_vba_selection();
+    assert_eq!(a.session.rev(), rev, "handler edits do not trigger notification again");
+    a.vba_trusted = false;
+    a.session.run("select.all", &json!({})).expect("select again");
+    a.notify_vba_selection();
+    assert_eq!(a.session.rev(), rev, "an untrusted selection event cannot edit");
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn alt_f11_mounts_the_editor_without_returning_to_host_in_the_same_frame() {
+    let mut h = harness(app());
+    let event = || egui::Event::Key { key: egui::Key::F11, physical_key: None, pressed: true, repeat: false, modifiers: egui::Modifiers::ALT };
+    h.event(event());
+    h.run_steps(3);
+    assert!(h.state().vba_open, "the opening key must not also activate the shared Return to Host shortcut");
+    h.event(egui::Event::Key { key: egui::Key::F11, physical_key: None, pressed: false, repeat: false, modifiers: egui::Modifiers::ALT });
+    h.event(event());
+    h.run_steps(3);
+    assert!(!h.state().vba_open);
+}
+
+#[cfg(feature = "vba")]
+fn dirty_vba_source(a: &mut WordApp) -> (wordcraft_vba::SourceId, u64, String) {
+    a.sync_vba_document();
+    let host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("host");
+    let mut project = wordcraft_vba::WordVbaProject::new(&host).expect("project");
+    project.import_source("Module1.bas", "Public Sub Main()\nEnd Sub\n").expect("source");
+    project.ide_mut().set_text("Public Sub Main()\nDebug.Print 1\nEnd Sub\n".into()).expect("edit");
+    let source = project.ide().modules.first().expect("module");
+    let snapshot = (source.id, source.revision, source.text.clone());
+    a.vba_project = Some(project);
+    snapshot
+}
+
+#[cfg(feature = "vba")]
+fn start_browser_vba_save(a: &mut WordApp) -> (crate::async_saves::AsyncSaves, u64) {
+    let (id, revision, text) = dirty_vba_source(a);
+    let saves = crate::async_saves::AsyncSaves::default();
+    let host_saves = saves.clone();
+    a.services.async_saves = Some(saves.clone());
+    a.services.download = Some(Box::new(move |_, _| {
+        host_saves.start();
+        Ok(())
+    }));
+    a.download_vba_source("Module1.bas", &text, Some((id, revision)));
+    let ticket = *a.vba_source_saves.keys().next().expect("pending source save");
+    assert!(
+        a.vba_project.as_ref().expect("project").ide().modules.first().expect("source").dirty(),
+        "starting the picker must not acknowledge a save"
+    );
+    (saves, ticket)
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn browser_vba_save_acknowledges_only_successful_completed_picker_writes() {
+    use crate::async_saves::SaveOutcome;
+    for outcome in [SaveOutcome::Saved, SaveOutcome::Cancelled, SaveOutcome::Failed("write failed".into())] {
+        let mut a = app();
+        let (saves, ticket) = start_browser_vba_save(&mut a);
+        saves.finish(ticket, outcome.clone());
+        a.settle_async_saves();
+        assert_eq!(a.vba_project.as_ref().expect("project").ide().modules.first().expect("source").dirty(), outcome != SaveOutcome::Saved);
+        assert!(a.vba_source_saves.is_empty());
+    }
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn browser_vba_save_cannot_acknowledge_intervening_edits_or_a_replacement_project() {
+    use crate::async_saves::SaveOutcome;
+    for replace in [false, true] {
+        let mut a = app();
+        let (saves, ticket) = start_browser_vba_save(&mut a);
+        if replace {
+            dirty_vba_source(&mut a);
+        } else {
+            a.vba_project.as_mut().expect("project").ide_mut().set_text("Public Sub Main()\nDebug.Print 2\nEnd Sub\n".into()).expect("later edit");
+        }
+        saves.finish(ticket, SaveOutcome::Saved);
+        a.settle_async_saves();
+        assert!(a.vba_project.as_ref().expect("project").ide().modules.first().expect("source").dirty());
+    }
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn browser_vba_save_acknowledges_the_originating_document_after_switching() {
+    let mut a = app();
+    let document = a.session.document_id();
+    let (saves, ticket) = start_browser_vba_save(&mut a);
+    let second = a.session.add_document(wordcraft_doc::Document::from_text("second"));
+    a.session.activate(second).expect("switch");
+    a.sync_vba_document();
+    saves.finish(ticket, crate::async_saves::SaveOutcome::Saved);
+    a.settle_async_saves();
+    assert!(a.vba_project.is_none(), "a save cannot create a project in the active document");
+    assert!(!a.vba_projects.get(&document).expect("originating project").project.ide().modules.first().expect("source").dirty());
+}
+
+#[cfg(feature = "vba")]
+#[test]
+fn paused_selection_event_finishes_without_notifying_its_own_later_edits_again() {
+    let mut a = app();
+    a.session.run("document.setText", &json!({"text":"abc"})).expect("text");
+    connect_application_events(
+        &mut a,
+        "Private hits As Long\nPrivate Sub app_WindowSelectionChange(ByVal Sel As Word.Selection)\nhits=hits+1\nActiveDocument.Content.Text=CStr(hits)\nStop\nActiveDocument.Content.InsertAfter \"!\"\nEnd Sub",
+    );
+    a.notify_vba_selection();
+    a.session.run("select.all", &json!({})).expect("select all");
+    a.notify_vba_selection();
+    assert!(a.vba_project.as_ref().expect("project").selection_event_pending());
+    let mut h = harness(a);
+    h.run_steps(2);
+    {
+        let a = h.state_mut();
+        let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("host");
+        host.set_authorized(true);
+        a.vba_project.as_mut().expect("project").continue_execution(&mut host).expect("continue");
+    }
+    h.run_steps(4);
+    assert!(h.state().vba_project.as_ref().expect("project").is_completed());
+    assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "1!");
+}

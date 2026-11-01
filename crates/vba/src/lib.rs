@@ -9,7 +9,7 @@
 mod host;
 mod main_story;
 
-pub use host::{WordHost, WordHostState, WordVbaProject};
+pub use host::{ApplicationEvent, WordHost, WordHostState, WordVbaProject};
 pub use main_story::{MainStoryMap, PositionAffinity, PositionError};
 pub use vba_ide::{HostRequest as SourceRequest, SourceId};
 pub use vba_values::Value;

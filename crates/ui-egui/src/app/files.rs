@@ -120,6 +120,10 @@ impl WordApp {
     pub(crate) fn settle_async_saves(&mut self) {
         let Some(saves) = self.services.async_saves.clone() else { return };
         for (ticket, outcome) in saves.take_finished() {
+            #[cfg(feature = "vba")]
+            if self.settle_vba_source_save(ticket, &outcome) {
+                continue;
+            }
             let current = self.session.document_id();
             if let Some(i) = self.saves_in_flight.iter().position(|s| s.ticket == ticket) {
                 let save = self.saves_in_flight.swap_remove(i);

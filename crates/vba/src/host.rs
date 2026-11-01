@@ -1,7 +1,7 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 use std::sync::{
     Arc, RwLock,
-    atomic::{AtomicBool, Ordering},
+    atomic::{AtomicBool, AtomicU64, Ordering},
 };
 
 use serde_json::json;
@@ -9,8 +9,8 @@ use vba_foreign::{
     Completion, ForeignError, Host, HostArgument, HostCall, InvokeKind, ObjectTypeResolver, ReferenceLibrary, ReferenceSet, ReferenceType,
     ReferenceTypeKind, Reply,
 };
-use vba_ide::{Action, ApiMember, HostRequest, Ide, Mode, SourceId};
-use vba_values::{NominalType, ObjectRef, Value, VbaString};
+use vba_ide::{Action, ApiMember, HostEventHandler, HostEventParameter, HostRequest, Ide, Mode, SourceId};
+use vba_values::{NominalType, ObjectRef, ScalarKind, Value, VbaString};
 use wordcraft_doc::StoryRef;
 use wordcraft_engine::Session;
 
@@ -18,6 +18,7 @@ use crate::{MainStoryMap, PositionAffinity};
 
 const MAX_HOST_OBJECTS: usize = 4096;
 const MAX_RUN_TICKS: usize = 1024;
+static NEXT_PROJECT: AtomicU64 = AtomicU64::new(1);
 const WORD_TYPES_VERSION: &str = "WordCraft.Word.v1";
 
 #[derive(Clone, Debug)]
@@ -453,9 +454,31 @@ impl Host for WordHost<'_> {
 
 /// Shared tiny-vba project configured with WordCraft's explicit roots and API catalogue.
 pub struct WordVbaProject {
+    instance: u64,
     ide: Ide,
     batch_active: bool,
     run_ticks: usize,
+    application_event: Option<ApplicationDelivery>,
+    application_outputs: Option<Vec<(usize, Value)>>,
+    application_cancel_index: Option<usize>,
+}
+
+/// Supported Word Application events. Package Open/New delivery remains separate.
+#[derive(Clone, Copy, Debug)]
+pub enum ApplicationEvent {
+    DocumentBeforeClose,
+    DocumentBeforeSave { save_as_ui: bool },
+    WindowSelectionChange,
+}
+struct ApplicationDelivery {
+    selection: bool,
+    handlers: VecDeque<HostEventHandler>,
+    arguments: Vec<Value>,
+    by_ref: Vec<usize>,
+    cancel: Option<usize>,
+    started: bool,
+    tail: Option<(String, Vec<Value>, Option<usize>)>,
+    in_tail: bool,
 }
 
 impl WordVbaProject {
@@ -501,7 +524,22 @@ impl WordVbaProject {
         )
         .map_err(|error| error.to_string())?;
         ide.configure_type_resolver(Some(host.state.objects.clone())).map_err(|error| error.to_string())?;
-        Ok(Self { ide, batch_active: false, run_ticks: 0 })
+        let instance = NEXT_PROJECT
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
+            .map_err(|_| "Word VBA project identity exhausted")?;
+        Ok(Self {
+            instance,
+            ide,
+            batch_active: false,
+            run_ticks: 0,
+            application_event: None,
+            application_outputs: None,
+            application_cancel_index: None,
+        })
+    }
+
+    pub fn instance(&self) -> u64 {
+        self.instance
     }
 
     pub fn ide(&self) -> &Ide {
@@ -526,8 +564,12 @@ impl WordVbaProject {
         })
     }
 
+    pub fn selection_event_pending(&self) -> bool {
+        self.application_event.as_ref().is_some_and(|delivery| delivery.selection)
+    }
+
     pub fn is_completed(&self) -> bool {
-        matches!(self.ide.mode(), Mode::Completed)
+        matches!(self.ide.mode(), Mode::Completed) && self.application_event.is_none()
     }
 
     pub fn is_waiting(&self) -> bool {
@@ -539,7 +581,7 @@ impl WordVbaProject {
     }
 
     pub fn is_running(&self) -> bool {
-        matches!(self.ide.mode(), Mode::Running)
+        matches!(self.ide.mode(), Mode::Running) || (self.application_event.is_some() && self.ide.mode() == Mode::Completed)
     }
 
     pub fn import_source(&mut self, name: &str, source: &str) -> Result<(), String> {
@@ -582,6 +624,8 @@ impl WordVbaProject {
         }
         host.begin_batch()?;
         self.batch_active = true;
+        self.application_outputs = None;
+        self.application_cancel_index = None;
         self.ide.clear_callback_outputs();
         let owner = host.state.root_refs.get("Document").copied().ok_or("Word document root is unavailable")?;
         if let Err(error) = self.ide.dispatch_document_event_for_owner(code_name, handler, arguments, Some(owner), host) {
@@ -602,12 +646,161 @@ impl WordVbaProject {
         Err("Word VBA event tick budget exceeded".into())
     }
 
+    /// Deliver only to actual live `WithEvents ... As Word.Application` subscriptions.
+    /// Validate all signatures before the first effect; preserve connection order and ByRef.
+    pub fn dispatch_application_event(&mut self, event: ApplicationEvent, host: &mut WordHost<'_>) -> Result<Option<Mode>, String> {
+        if !host.state.authorized {
+            return Err("Word Application events require explicit document trust".into());
+        }
+        if self.application_event.is_some() {
+            return Err("a Word Application event is already pending".into());
+        }
+        if self.ide.mode() == Mode::Design {
+            return Ok(None);
+        }
+        if self.ide.mode() != Mode::Completed {
+            return Err("Word Application events require a completed invocation".into());
+        }
+        let root = |name: &str| host.state.root_refs.get(name).copied().map(Value::Object).ok_or_else(|| "Word event root is unavailable".to_owned());
+        let object = |name: &str| -> Result<HostEventParameter, String> {
+            Ok(HostEventParameter {
+                kind: ScalarKind::Object,
+                by_ref: false,
+                nominal: Some(NominalType::new("Word", WORD_TYPES_VERSION, name).map_err(|e| e.to_string())?),
+            })
+        };
+        let boolean = || HostEventParameter { kind: ScalarKind::Boolean, by_ref: true, nominal: None };
+        let (name, parameters, arguments, cancel, tail) = match event {
+            ApplicationEvent::DocumentBeforeClose => {
+                let tail = if self.has_document_event("ThisDocument", "Document_Close") {
+                    Some(("Document_Close".into(), vec![], None))
+                } else if self.has_document_event("ThisDocument", "Document_BeforeClose") {
+                    Some(("Document_BeforeClose".into(), vec![Value::Boolean(false)], Some(0)))
+                } else {
+                    None
+                };
+                ("DocumentBeforeClose", vec![object("Document")?, boolean()], vec![root("Document")?, Value::Boolean(false)], Some(1), tail)
+            }
+            ApplicationEvent::DocumentBeforeSave { save_as_ui } => {
+                let tail = self
+                    .has_document_event("ThisDocument", "Document_BeforeSave")
+                    .then(|| ("Document_BeforeSave".into(), vec![Value::Boolean(save_as_ui), Value::Boolean(false)], Some(1)));
+                (
+                    "DocumentBeforeSave",
+                    vec![object("Document")?, boolean(), boolean()],
+                    vec![root("Document")?, Value::Boolean(save_as_ui), Value::Boolean(false)],
+                    Some(2),
+                    tail,
+                )
+            }
+            ApplicationEvent::WindowSelectionChange => ("WindowSelectionChange", vec![object("Selection")?], vec![root("Selection")?], None, None),
+        };
+        let publisher = host.state.root_refs.get("Application").copied().ok_or("Word Application root is unavailable")?;
+        let handlers = self.ide.host_event_handlers(publisher, name, &parameters, host).map_err(|e| e.to_string())?;
+        if handlers.is_empty() {
+            return Ok(None);
+        }
+        host.begin_batch()?;
+        self.batch_active = true;
+        self.run_ticks = 0;
+        self.ide.clear_callback_outputs();
+        self.application_outputs = None;
+        self.application_cancel_index = cancel;
+        self.application_event = Some(ApplicationDelivery {
+            selection: matches!(event, ApplicationEvent::WindowSelectionChange),
+            handlers: handlers.into(),
+            arguments,
+            by_ref: parameters.iter().enumerate().filter_map(|(i, p)| p.by_ref.then_some(i)).collect(),
+            cancel,
+            started: false,
+            tail,
+            in_tail: false,
+        });
+        self.advance_application_event(host).map(Some)
+    }
+
+    fn advance_application_event(&mut self, host: &mut WordHost<'_>) -> Result<Mode, String> {
+        if !host.state.authorized {
+            self.application_event = None;
+            self.ide.dispatch(Action::Reset, host).map_err(|e| e.to_string())?;
+            self.application_outputs = None;
+            self.batch_active = false;
+            return Err("Word Application event trust was revoked".into());
+        }
+        for _ in 0..64 {
+            self.run_ticks = self.run_ticks.saturating_add(1);
+            if self.run_ticks > MAX_RUN_TICKS {
+                self.application_event = None;
+                self.batch_active = false;
+                return Err("Word Application event tick budget exceeded".into());
+            }
+            let mode = self.ide.mode();
+            if mode == Mode::Running {
+                self.ide.tick(host).map_err(|e| e.to_string())?;
+                continue;
+            }
+            if matches!(mode, Mode::Waiting | Mode::Break) {
+                return Ok(mode);
+            }
+            if mode != Mode::Completed {
+                self.application_event = None;
+                self.application_outputs = None;
+                self.batch_active = false;
+                return Ok(mode);
+            }
+            let mut delivery = self.application_event.take().ok_or("Word Application event delivery is unavailable")?;
+            if delivery.started {
+                for (index, value) in self.ide.take_callback_outputs().unwrap_or_default() {
+                    if delivery.in_tail {
+                        if delivery.tail.as_ref().and_then(|tail| tail.2) == Some(index)
+                            && let Some(cancel) = delivery.cancel.and_then(|i| delivery.arguments.get_mut(i))
+                        {
+                            *cancel = value;
+                        }
+                    } else if let Some(argument) = delivery.arguments.get_mut(index) {
+                        *argument = value;
+                    }
+                }
+            }
+            if let Some(handler) = delivery.handlers.pop_front() {
+                self.ide.dispatch_host_event_handler(&handler, delivery.arguments.clone(), host).map_err(|e| e.to_string())?;
+                delivery.started = true;
+                self.application_event = Some(delivery);
+                continue;
+            }
+            let cancelled = delivery.cancel.and_then(|i| delivery.arguments.get(i)) == Some(&Value::Boolean(true));
+            if !delivery.in_tail
+                && !cancelled
+                && let Some((handler, arguments, _)) = &delivery.tail
+            {
+                let owner = host.state.root_refs.get("Document").copied().ok_or("Word document root is unavailable")?;
+                self.ide
+                    .dispatch_document_event_for_owner("ThisDocument", handler, arguments.clone(), Some(owner), host)
+                    .map_err(|e| e.to_string())?;
+                delivery.in_tail = true;
+                delivery.started = true;
+                self.application_event = Some(delivery);
+                continue;
+            }
+            self.application_outputs =
+                Some(delivery.by_ref.into_iter().filter_map(|i| delivery.arguments.get(i).cloned().map(|value| (i, value))).collect());
+            self.batch_active = false;
+            return Ok(Mode::Completed);
+        }
+        Ok(self.ide.mode())
+    }
+
     pub fn take_callback_outputs(&mut self) -> Option<Vec<(usize, Value)>> {
-        self.ide.take_callback_outputs()
+        if self.application_event.is_some() {
+            return None;
+        }
+        self.application_outputs.take().or_else(|| self.ide.take_callback_outputs())
     }
 
     pub fn take_boolean_callback_output(&mut self, index: usize) -> Option<bool> {
-        self.take_callback_outputs()?.into_iter().find(|(argument, _)| *argument == index).and_then(|(_, value)| match value {
+        let outputs = self.take_callback_outputs()?;
+        let index = self.application_cancel_index.take().unwrap_or(index);
+        outputs.into_iter().find(|(argument, _)| *argument == index).and_then(|(_, value)| match value {
             Value::Boolean(value) => Some(value),
             _ => None,
         })
@@ -675,8 +868,21 @@ impl WordVbaProject {
         Ok(self.ide.mode())
     }
 
+    /// Establish the host batch before the shared UI can execute its first VM slice.
+    pub fn prepare_ui_action(&mut self, host: &mut WordHost<'_>) -> Result<(), String> {
+        if !self.batch_active {
+            host.begin_batch()?;
+            self.batch_active = true;
+            self.run_ticks = 0;
+        }
+        Ok(())
+    }
+
     /// Advance an already-dispatched UI action with a fixed instruction-tick budget.
     pub fn advance(&mut self, host: &mut WordHost<'_>) -> Result<Mode, String> {
+        if self.application_event.is_some() {
+            return self.advance_application_event(host);
+        }
         if !self.batch_active {
             host.begin_batch()?;
             self.batch_active = true;
@@ -702,6 +908,9 @@ impl WordVbaProject {
 
     pub fn reset(&mut self, host: &mut WordHost<'_>) -> Result<(), String> {
         self.ide.dispatch(Action::Reset, host).map_err(|error| error.to_string())?;
+        self.application_event = None;
+        self.application_outputs = None;
+        self.application_cancel_index = None;
         self.batch_active = false;
         self.run_ticks = 0;
         host.begin_batch()?;
@@ -710,6 +919,9 @@ impl WordVbaProject {
 
     pub fn close(&mut self, host: &mut WordHost<'_>, discard_modified: bool) -> Result<(), String> {
         self.ide.close(host, discard_modified).map_err(|error| error.to_string())?;
+        self.application_event = None;
+        self.application_outputs = None;
+        self.application_cancel_index = None;
         self.batch_active = false;
         self.run_ticks = 0;
         host.begin_batch()?;

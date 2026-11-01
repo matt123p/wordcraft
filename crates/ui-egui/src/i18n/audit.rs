@@ -209,6 +209,8 @@ impl<'a> Exempt<'a> {
             || matches!(plain, "WordCraft" | "WordCraft User" | "Discord" | "https://" | "auto" | "I. II. III." | "i. ii. iii." | "I, II, III, …" | "i, ii, iii, …")
             || plain == "CONFIDENTIAL" // the watermark dialog's text: document content, kept as typed
             || plain == "Figure 1" // the caption dialog's sample: the label goes into the document as is
+            || plain == "Untitled Project" // the shared VBA editor's default project title: authored data
+            || plain == "Main" // the default entry procedure name: authored data
     }
 }
 

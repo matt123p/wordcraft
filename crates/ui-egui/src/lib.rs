@@ -3139,6 +3139,9 @@ impl WordApp {
         };
         let editor = &mut self.vba_editor;
         let ui_theme = vba_ui_egui::Theme {
+            // The shared VBA editor's chrome goes through WordCraft's interface
+            // localization; authored source, identifiers and form captions never do.
+            localize: |english| std::borrow::Cow::Borrowed(crate::i18n::t(english)),
             dark: tokens.dark,
             chrome: tokens.panel,
             editor: tokens.input,

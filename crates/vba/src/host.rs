@@ -469,22 +469,23 @@ impl WordVbaProject {
         // M6.7/M6.8: declare the document profile's implicit `Me` members for the
         // `ThisDocument` module, its instance type, and each host global's result
         // type. Metadata only; code aids never invoke host members.
-        let document_members = [("thisdocument", api_catalog().iter().filter(|item| item.supported && item.owner == "Document").map(|item| item.name.to_ascii_lowercase()).collect::<Vec<_>>())]
-            .into_iter()
-            .map(|(module, members)| (module.to_string(), members))
-            .collect();
-        let document_types = [("thisdocument", "Document")].into_iter().map(|(name, ty)| (name.to_string(), ty.to_string())).collect();
-        let host_types = [
-            ("Application", "Application"),
-            ("ActiveDocument", "Document"),
-            ("Selection", "Selection"),
-            ("ThisDocument", "Document"),
-        ]
+        let document_members = [(
+            "thisdocument",
+            api_catalog()
+                .iter()
+                .filter(|item| item.supported && item.owner == "Document")
+                .map(|item| item.name.to_ascii_lowercase())
+                .collect::<Vec<_>>(),
+        )]
         .into_iter()
-        .map(|(name, ty)| (name.to_string(), ty.to_string()))
+        .map(|(module, members)| (module.to_string(), members))
         .collect();
-        ide.configure_document_context(document_members, document_types, host_types)
-            .map_err(|error| error.to_string())?;
+        let document_types = [("thisdocument", "Document")].into_iter().map(|(name, ty)| (name.to_string(), ty.to_string())).collect();
+        let host_types = [("Application", "Application"), ("ActiveDocument", "Document"), ("Selection", "Selection"), ("ThisDocument", "Document")]
+            .into_iter()
+            .map(|(name, ty)| (name.to_string(), ty.to_string()))
+            .collect();
+        ide.configure_document_context(document_members, document_types, host_types).map_err(|error| error.to_string())?;
         ide.configure_reference_bindings(
             ReferenceSet::new(vec![ReferenceLibrary {
                 name: "Word".into(),
@@ -521,8 +522,7 @@ impl WordVbaProject {
 
     fn has_standard_entry(&self, entry: &str) -> bool {
         self.ide.modules.iter().any(|module| {
-            module.kind == vba_ide::ModuleKind::Standard
-                && module.procedures.iter().any(|procedure| procedure.name.eq_ignore_ascii_case(entry))
+            module.kind == vba_ide::ModuleKind::Standard && module.procedures.iter().any(|procedure| procedure.name.eq_ignore_ascii_case(entry))
         })
     }
 

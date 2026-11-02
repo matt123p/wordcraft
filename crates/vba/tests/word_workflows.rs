@@ -5,6 +5,23 @@ use wordcraft_engine::Session;
 use wordcraft_vba::{WordHost, WordHostState, WordVbaProject};
 
 #[test]
+fn authored_word_macro_uses_shared_strcomp_result() {
+    let mut session = Session::new(Document::from_text(""));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).expect("Word host");
+    host.set_authorized(true);
+    let mut project = WordVbaProject::new(&host).expect("project");
+    project
+        .import_source("Module1.bas", "Public Sub Main()\nActiveDocument.Content.Text = CStr(StrComp(\"A\", \"a\"))\nEnd Sub")
+        .expect("import authored StrComp source");
+
+    let mode = project.run("Main", &mut host).expect("run StrComp");
+    assert_eq!(mode, Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "-1");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+}
+
+#[test]
 fn authored_macro_mutates_the_live_document_as_one_undo_step() {
     let mut session = Session::new(Document::from_text(""));
     let mut state = WordHostState::default();

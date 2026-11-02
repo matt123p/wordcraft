@@ -484,6 +484,10 @@ struct ApplicationDelivery {
 impl WordVbaProject {
     pub fn new(host: &WordHost<'_>) -> Result<Self, String> {
         let mut ide = Ide::new();
+        let comparison_context = vba_vm::IntrinsicContextConfig::new("invariant".into(), "Gregorian".into(), "UTF-16".into(), usize::BITS as u8)
+            .map_err(|error| error.to_string())?;
+        ide.configure_string_comparison_service(std::sync::Arc::new(vba_runtime::BinaryStringComparisonService), comparison_context)
+            .map_err(|error| error.to_string())?;
         let imports = [("Application", "Application"), ("ActiveDocument", "Document"), ("Selection", "Selection")]
             .into_iter()
             .map(|(name, root)| vba_foreign::Import { name: name.into(), root: root.into(), member: None, kind: InvokeKind::Get })

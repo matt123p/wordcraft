@@ -16,3 +16,5 @@ serde_json = { workspace = true }
 vba-foreign = { workspace = true }
 vba-ide = { workspace = true }
 vba-values = { workspace = true }
+vba-runtime = { git = "https://github.com/matt123p/tiny-vba", rev = "970ae9b81be0e015f89f08068551aa164db36895" }
+vba-vm = { git = "https://github.com/matt123p/tiny-vba", rev = "970ae9b81be0e015f89f08068551aa164db36895" }

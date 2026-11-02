@@ -14,6 +14,20 @@ the document before execution. Merely importing a project or opening the editor
 does not execute its procedures. Imports are bounded to 4 MiB before decoding;
 the shared IDE applies its narrower per-source/project/design budgets afterward.
 
+## Editor error visibility (2026-11-02)
+
+The editor displays a notice when document trust is disabled, and keeps the latest
+message visible above the shared toolbar regardless of the debugger tab selected.
+Host batch, command and execution failures enter this visible message log as well
+as the application log. Host binding and project initialization failures display in
+the VBA window even when the shared editor cannot initialize. Enable the trust
+checkbox before running a macro that accesses the document.
+
+Verification: the 12 VBA UI tests pass, including an invalid-entry command error,
+visible runtime trust rejection, trust enablement, Step Into and successful Run.
+Formatting and whitespace checks pass. These are authored WordCraft tests, not
+Microsoft Word reference observations.
+
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks

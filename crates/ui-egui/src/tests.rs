@@ -7214,6 +7214,44 @@ fn vba_editor_is_closed_by_default_and_opens_from_view_macros() {
 
 #[cfg(feature = "vba")]
 #[test]
+fn vba_trust_notice_and_command_failures_are_visible_outside_output() {
+    let mut a = app();
+    a.vba_open = true;
+    let mut h = harness(a);
+    h.run_steps(3);
+    let blocked = "VBA document access is blocked. Enable document trust above to allow macros to access this document.";
+    assert!(h.query_by_label(blocked).is_some());
+    let project = h.state_mut().vba_project.as_mut().unwrap();
+    project.import_source("Module1.bas", "Public Sub Main()\nActiveDocument.Content.Text = \"executed\"\nEnd Sub\n").unwrap();
+    project.ide_mut().entry = "MissingEntry".into();
+    h.run_steps(2);
+    h.get_by_label(">  Run").click();
+    h.run_steps(4);
+    let message = h.state().vba_project.as_ref().unwrap().ide().messages.last().unwrap();
+    assert!(message.contains("entry procedure"), "{message}");
+    assert!(h.query_by_label(&format!("VBA: {message}")).is_some());
+    h.state_mut().vba_project.as_mut().unwrap().ide_mut().entry = "Main".into();
+    h.get_by_label(">  Run").click();
+    h.run_steps(4);
+    let diagnostic = &h.state().vba_project.as_ref().unwrap().ide().diagnostics[0];
+    assert!(diagnostic.to_string().contains("trust"), "{diagnostic}");
+    assert!(h.query_by_label(&format!("! {diagnostic}")).is_some());
+    assert_ne!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "executed");
+    h.get_by_label("Trust this document's VBA and allow it to edit this document").click();
+    h.run_steps(2);
+    assert!(h.query_by_label(blocked).is_none());
+    h.get_by_label("[]  Reset").click();
+    h.run_steps(2);
+    h.get_by_label("->  Into").click();
+    h.run_steps(2);
+    assert!(h.state().vba_project.as_ref().unwrap().ide().pause().is_some());
+    h.get_by_label(">  Run").click();
+    h.run_steps(4);
+    assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "executed");
+}
+
+#[cfg(feature = "vba")]
+#[test]
 fn browser_vba_import_consumes_inbox_source_without_running_it() {
     let mut a = app();
     let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state).expect("Word host");

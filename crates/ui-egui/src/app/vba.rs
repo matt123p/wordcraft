@@ -244,6 +244,9 @@ impl WordApp {
             Ok(host) => host,
             Err(error) => {
                 log::warn!("VBA host could not bind to the active document: {error}");
+                egui::Window::new(crate::tl!("Visual Basic")).open(&mut self.vba_open).show(ctx, |ui| {
+                    ui.label(format!("VBA: {error}"));
+                });
                 return;
             }
         };
@@ -252,6 +255,9 @@ impl WordApp {
                 Ok(project) => self.vba_project = Some(project),
                 Err(error) => {
                     log::warn!("VBA project could not initialize: {error}");
+                    egui::Window::new(crate::tl!("Visual Basic")).open(&mut self.vba_open).show(ctx, |ui| {
+                        ui.label(format!("VBA: {error}"));
+                    });
                     return;
                 }
             }
@@ -280,20 +286,34 @@ impl WordApp {
         let mut source_requests = Vec::new();
         egui::Window::new(crate::tl!("Visual Basic")).open(&mut open).default_size([960.0, 680.0]).vscroll(false).show(ctx, |ui| {
             ui.checkbox(&mut trusted, crate::tl!("Trust this document's VBA and allow it to edit this document"));
+            if !trusted {
+                ui.label(crate::tl!("VBA document access is blocked. Enable document trust above to allow macros to access this document."));
+            }
+            if let Some(message) = project.ide().messages.last() {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(format!("VBA: {message}"));
+                });
+            }
             host.set_authorized(trusted);
             let commands = editor.show(ui, project.ide(), ui_theme);
             if let Err(error) = project.prepare_ui_action(&mut host) {
                 log::warn!("VBA host batch could not start: {error}");
+                project.ide_mut().message(error);
+                ui.ctx().request_repaint();
                 return;
             }
             for command in commands {
                 if let Err(error) = vba_ui_egui::apply(project.ide_mut(), command, &mut host) {
                     log::warn!("VBA editor command failed: {error}");
+                    project.ide_mut().message(error.to_string());
+                    ui.ctx().request_repaint();
                 }
             }
             source_requests.extend(project.take_source_requests());
             if let Err(error) = project.advance(&mut host) {
                 log::warn!("VBA execution stopped: {error}");
+                project.ide_mut().message(error);
+                ui.ctx().request_repaint();
             }
             source_requests.extend(project.take_source_requests());
             if project.is_running() {

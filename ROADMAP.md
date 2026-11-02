@@ -142,6 +142,8 @@ Ranked, to beta (detail and remaining milestones in [docs/roadmap.md](docs/roadm
 
 ## Progress log
 
+- 2026-11-02: VBA host setup, command and execution failures are visible in the editor rather than only the application log. A document-trust notice explains blocked host access. Compatibility and readiness estimates are unchanged; see docs/vba-integration.md.
+
 - 2026-10-30: M6 VBA integration adds the optional shared tiny-vba editor on native/web builds, explicit View > Macros > Visual Basic and Alt+F11 access, document-bound source/trust/callback state, bounded inert source transfers, typed Word roots/ranges, named/optional positions, live mutation/undo and canonical `Document_Close()`. The acceptance profile records standard event and reference-observation gaps; package project round trips remain M7.
 
 - 2026-10-28: Aligned-copy review fixes keep the document axis locked through middle-button scrolling and let Ctrl/Command+Shift start on a secondary selected object. Plain Ctrl and Shift clicks keep their existing behavior (#4764).

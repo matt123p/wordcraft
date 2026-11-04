@@ -541,6 +541,7 @@ impl WordVbaProject {
             let project = vba_project::decode(bytes, &vba_project::Limits::default()).map_err(|error| error.to_string())?;
             for module in project.modules {
                 let result = match module.kind {
+                    vba_project::ModuleKind::UserForm => ide.attach_native_form(module.form.ok_or("native form resource missing")?),
                     vba_project::ModuleKind::Standard => ide.add_module(&format!("{}.bas", module.name), &module.source),
                     vba_project::ModuleKind::Class => {
                         ide.add_module_with_kind(&format!("{}.cls", module.name), &module.source, vba_ide::ModuleKind::Class)
@@ -625,6 +626,16 @@ impl WordVbaProject {
             return self.ide.add_document_module(name, &code_name, source).map(|_| ()).map_err(|error| error.to_string());
         }
         self.ide.import_source_file(name, source).map(|_| ()).map_err(|error| error.to_string())
+    }
+
+    pub fn import_source_bundle(&mut self, files: &[vba_ide::NativeFormResource], code_page: u16) -> Result<(), String> {
+        if let [file] = files
+            && !file.name.to_ascii_lowercase().ends_with(".frm")
+        {
+            let text = std::str::from_utf8(&file.bytes).map_err(|error| error.to_string())?;
+            return self.import_source(&file.name, text);
+        }
+        self.ide.import_source_bundle(files, code_page).map(|_| ()).map_err(|error| error.to_string())
     }
 
     pub fn take_source_requests(&mut self) -> Vec<HostRequest> {

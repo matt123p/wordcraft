@@ -87,3 +87,8 @@ M6 host-event delivery 2026-11-01: wordcraft-vba owns trusted Application event 
 M7 revision history — 2026-11-04: added the authored unchanged-document/package
 profile, original-project/source-export distinction and explicit signature policy.
 See the linked shared M7 acceptance record for exact tests and limitations.
+
+M7A.1/M7A.2 update — 2026-11-04: selected native UserForm export/embedded
+import now attaches inertly to the shared designer/runtime/debugger. Source and
+original resources remain distinct, explicit authorization precedes execution,
+and native edited saving/broader semantics/custom-format removal remain open.

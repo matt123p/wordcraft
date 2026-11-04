@@ -22,9 +22,13 @@ are grouped into a single undo step.
 
 Enable the optional editor with `cargo run -p wordcraft --features vba`; the browser
 application exposes the same `vba` feature. Open View > Macros > Visual Basic or use
-Alt+F11. Import authored `.bas`, `.cls` or `.tvform` source, then explicitly trust
+Alt+F11. Import authored `.bas`/`.cls` source or a selected native `.frm`/`.frx`
+form pair (legacy `.tvform` removal is scheduled separately), then explicitly trust
 the document before execution. Merely importing a project or opening the editor
-does not execute its procedures. Imports are bounded to 4 MiB before decoding;
+does not execute its procedures. Native paired browser imports are bounded to 8 MiB in aggregate; native resource
+CFB data is bounded to 4 MiB and export source uses the narrower shared source limit.
+Native file selection reads only the validated sibling companion. Other imports
+retain their existing file bounds;
 the shared IDE applies its narrower per-source/project/design budgets afterward.
 
 ## Editor error visibility (2026-11-02)
@@ -199,3 +203,22 @@ profile and moved fresh Microsoft Excel/Word comparison to tiny-vba M8.5. These
 observations remain NOT_RUN; they no longer block M7 unchanged-document/package
 work. This scheduling decision does not change the supported host profile or
 claim a new Office observation. See tiny-vba ADR 0032.
+
+## M7A.1/M7A.2 native UserForms (2026-11-04)
+
+The selected `native-userform-import-v1` profile now attaches embedded UserForms
+from DOCM and native `.frm`/`.frx` pairs through the shared designer/code/Properties/
+debugger/runtime. Immediate Label/TextBox/CommandButton children are supported;
+unknown controls, containers, bindings and unsupported property/resource variants
+refuse before publication. The shell export profile is Windows-1252; embedded
+projects use their declared code page. Browser file picking supplies the explicit
+pair together rather than publishing a source before its resources arrive.
+
+Import is inert and never grants host authorization or fires Initialize. Authored
+package tests prove explicit authorization, modal handler return, Reset and original
+embedded project retention on save/reopen. Native edited source/resource saving
+remains unsupported and cannot fall back to the custom archive. Full lifecycle/
+control parity, edited persistence and legacy-format removal remain later M7A tasks.
+See [native contracts](../../tiny-vba/docs/m7a-control-contracts.md) and
+[acceptance](../../tiny-vba/docs/m7a-import-acceptance.md). No fresh Office
+observation or signature validity is claimed.

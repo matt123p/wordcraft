@@ -452,36 +452,37 @@ impl WordApp {
     /// recipient lists (CSV/TSV, spreadsheets, or a text file asked for as one) load as recipients.
     pub(crate) fn drain_inbox(&mut self) {
         let Some(inbox) = self.services.inbox.clone() else { return };
-        let files = std::mem::take(&mut *inbox.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+        #[allow(unused_mut)]
+        let mut files = std::mem::take(&mut *inbox.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
+        #[cfg(feature = "vba")]
+        if self.vba_import_pending.is_some()
+            && files.iter().any(|(name, _)| [".bas", ".cls", ".frm", ".frx", ".tvform"].iter().any(|e| name.to_ascii_lowercase().ends_with(e)))
+        {
+            let document = self.vba_import_pending.take();
+            let (selected, rest): (Vec<_>, Vec<_>) = files
+                .into_iter()
+                .partition(|(name, _)| [".bas", ".cls", ".frm", ".frx", ".tvform"].iter().any(|e| name.to_ascii_lowercase().ends_with(e)));
+            files = rest;
+            let total = selected.iter().fold(0usize, |n, (_, b)| n.saturating_add(b.len()));
+            let result = if document != Some(self.session.document_id()) {
+                Err("The document for this VBA import is no longer active.".into())
+            } else if selected.len() > 2 || total > 8 * 1024 * 1024 {
+                Err("Choose one source file and its bounded .frx companion.".into())
+            } else {
+                let files = selected.into_iter().map(|(name, bytes)| wordcraft_vba::NativeFormResource { name, bytes }).collect::<Vec<_>>();
+                self.vba_project
+                    .as_mut()
+                    .ok_or_else(|| "The VBA project is closed.".to_owned())
+                    .and_then(|project| project.import_source_bundle(&files, 1252))
+            };
+            match result {
+                Ok(()) => self.status("Imported VBA source without execution."),
+                Err(error) => self.status(format!("Could not import VBA source: {error}")),
+            }
+        }
         let mut placed_picture = false;
         for (name, bytes) in files {
             let lower = name.to_ascii_lowercase();
-            #[cfg(feature = "vba")]
-            if self.vba_import_pending.is_some() && [".bas", ".cls", ".tvform"].iter().any(|ext| lower.ends_with(ext)) {
-                let document = self.vba_import_pending.take();
-                if document != Some(self.session.document_id()) {
-                    self.status("The document for this VBA import is no longer active.");
-                    continue;
-                }
-                if bytes.len() as u64 > wordcraft_vba::MAX_SOURCE_IMPORT_BYTES {
-                    self.status("VBA source exceeds the import size limit.");
-                    continue;
-                }
-                match String::from_utf8(bytes) {
-                    Ok(source) => {
-                        if let Some(project) = self.vba_project.as_mut() {
-                            match project.import_source(&name, &source) {
-                                Ok(()) => self.status(format!("Imported VBA source {name}")),
-                                Err(error) => self.status(format!("Could not import VBA source: {error}")),
-                            }
-                        } else {
-                            self.status("The VBA project is closed.");
-                        }
-                    }
-                    Err(error) => self.status(format!("VBA source must be UTF-8: {error}")),
-                }
-                continue;
-            }
             let img = [".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".wmf", ".emf"].iter().any(|e| lower.ends_with(e));
             // Any recipient file ends the pending picker request, so a later .txt drop opens normally.
             let asked = std::mem::take(&mut self.recipient_list_pending);

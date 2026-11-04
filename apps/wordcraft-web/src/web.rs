@@ -258,10 +258,26 @@ fn services(inbox: Inbox, ctx: egui::Context, dirty: Rc<Cell<bool>>, saves: Asyn
             for (name, extensions) in wordcraft_ui_egui::open_filters(purpose) {
                 dialog = dialog.add_filter(*name, extensions);
             }
-            let many = purpose == "font";
+            let native_form = purpose == "vba_source";
+            let many = purpose == "font" || native_form;
             wasm_bindgen_futures::spawn_local(async move {
                 // Add Font takes every selected file (#1789); the others one.
                 let files = if many { dialog.pick_files().await.unwrap_or_default() } else { dialog.pick_file().await.into_iter().collect() };
+                if native_form {
+                    let mut selected = Vec::new();
+                    let mut total = 0usize;
+                    for file in files.into_iter().take(3) {
+                        let bytes = file.read().await;
+                        total = total.saturating_add(bytes.len());
+                        selected.push((file.file_name(), bytes));
+                        if total > 8 * 1024 * 1024 {
+                            break;
+                        }
+                    }
+                    inbox.lock().unwrap_or_else(|e| e.into_inner()).extend(selected);
+                    ctx.request_repaint();
+                    return;
+                }
                 for file in files.into_iter().take(MAX_PICKED_FILES) {
                     let mut bytes = file.read().await;
                     let mut pending = inbox.lock().unwrap_or_else(|e| e.into_inner());

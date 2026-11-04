@@ -49,7 +49,7 @@ pub fn open_filters(purpose: &str) -> &'static [(&'static str, &'static [&'stati
         "picture" => &[("Pictures", PICTURES)],
         "font" => &[("Fonts", wordcraft_fonts::FONT_FILE_EXTS)],
         "sources" => &[("Word sources", &["xml"]), ("All files", &["*"])],
-        "vba_source" => &[("VBA source", &["bas", "cls", "tvform"]), ("All files", &["*"])],
+        "vba_source" => &[("VBA source", &["bas", "cls", "frm", "frx", "tvform"]), ("All files", &["*"])],
         "recipients" => &[("Recipient lists", wordcraft_engine::cmd::mailings::RECIPIENT_EXTENSIONS), ("All files", &["*"])],
         _ => &[("Documents", DOCUMENTS), ("Word document", &["docx"]), ("All files", &["*"])],
     }
@@ -303,9 +303,20 @@ impl WordApp {
                 }
                 let bytes = wordcraft_engine::io::read_regular_file_within(std::path::Path::new(&path), wordcraft_vba::MAX_SOURCE_IMPORT_BYTES)
                     .ok_or("VBA import requires a readable regular file within the source size limit")?;
-                let source = String::from_utf8(bytes).map_err(|error| format!("VBA source must be UTF-8: {error}"))?;
                 let name = std::path::Path::new(&path).file_name().and_then(|name| name.to_str()).ok_or("invalid VBA source filename")?;
-                self.vba_project.as_mut().ok_or("VBA project is closed")?.import_source(name, &source)?;
+                let mut files = vec![wordcraft_vba::NativeFormResource { name: name.into(), bytes }];
+                if name.to_ascii_lowercase().ends_with(".frm") {
+                    let file = files.first().ok_or("source missing")?;
+                    let companion = wordcraft_vba::native_form_companion_name(&file.bytes, 1252, &wordcraft_vba::ProjectImportLimits::default())
+                        .map_err(|error| error.to_string())?;
+                    if let Some(name) = companion {
+                        let companion_path = std::path::Path::new(&path).with_file_name(&name);
+                        let bytes = wordcraft_engine::io::read_regular_file_within(&companion_path, 4 * 1024 * 1024)
+                            .ok_or("missing or oversized native form companion")?;
+                        files.push(wordcraft_vba::NativeFormResource { name, bytes });
+                    }
+                }
+                self.vba_project.as_mut().ok_or("VBA project is closed")?.import_source_bundle(&files, 1252)?;
                 self.status(format!("Imported VBA source {name}"));
                 Ok(json!({"imported": name}))
             }

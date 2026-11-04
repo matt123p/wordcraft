@@ -1074,3 +1074,8 @@ Footer page-table height and body wrapping are corrected. Other pagination gaps 
 | 2026-10-28 | trivial | Progress log: RTF metafile pictures are imported (#4259) |
 
 M6 follow-up (2026-11-01): implemented live Application events, lossless attribute code views, source-save completion checks and Alt+F11 routing; see docs/vba-integration.md. Office observations and final shared publication/pin remain pending; M7 untouched.
+
+M7A.1/M7A.2 update — 2026-11-04: selected native UserForm export/embedded
+import now attaches inertly to the shared designer/runtime/debugger. Source and
+original resources remain distinct, explicit authorization precedes execution,
+and native edited saving/broader semantics/custom-format removal remain open.

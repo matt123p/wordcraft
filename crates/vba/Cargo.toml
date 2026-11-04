@@ -16,9 +16,9 @@ serde_json = { workspace = true }
 vba-foreign = { workspace = true }
 vba-ide = { workspace = true }
 vba-values = { workspace = true }
-vba-runtime = { git = "https://github.com/matt123p/tiny-vba", rev = "0b41fd7bf7c78a62323133b290f2f9646667f9d3" }
-vba-vm = { git = "https://github.com/matt123p/tiny-vba", rev = "0b41fd7bf7c78a62323133b290f2f9646667f9d3" }
-vba-project = { git = "https://github.com/matt123p/tiny-vba", rev = "0b41fd7bf7c78a62323133b290f2f9646667f9d3" }
+vba-runtime = { git = "https://github.com/matt123p/tiny-vba", rev = "87a862a9f11a372e112d7c166b9a82d74c8e009d" }
+vba-vm = { git = "https://github.com/matt123p/tiny-vba", rev = "87a862a9f11a372e112d7c166b9a82d74c8e009d" }
+vba-project = { git = "https://github.com/matt123p/tiny-vba", rev = "87a862a9f11a372e112d7c166b9a82d74c8e009d" }
 
 [dev-dependencies]
 wordcraft-docx = { workspace = true }

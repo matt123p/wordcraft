@@ -29,9 +29,9 @@ wordcraft-control-key = { path = "crates/control-key" }
 wordcraft-ui-egui = { path = "crates/ui-egui" }
 wordcraft-metafile = { path = "crates/metafile" }
 wordcraft-vba = { path = "crates/vba" }
-vba-foreign = { git = "https://github.com/matt123p/tiny-vba", rev = "6534f4fcbd70dfc54e4e332836f45912549fc37b" }
-vba-ide = { git = "https://github.com/matt123p/tiny-vba", rev = "6534f4fcbd70dfc54e4e332836f45912549fc37b" }
-vba-values = { git = "https://github.com/matt123p/tiny-vba", rev = "6534f4fcbd70dfc54e4e332836f45912549fc37b" }
+vba-foreign = { git = "https://github.com/matt123p/tiny-vba", rev = "3688113be57d5413d7e96c29f0798d08c0d3506a" }
+vba-ide = { git = "https://github.com/matt123p/tiny-vba", rev = "3688113be57d5413d7e96c29f0798d08c0d3506a" }
+vba-values = { git = "https://github.com/matt123p/tiny-vba", rev = "3688113be57d5413d7e96c29f0798d08c0d3506a" }
 
 # foundation
 kurbo = { version = "0.13", features = ["serde"] }

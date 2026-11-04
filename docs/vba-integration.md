@@ -48,7 +48,7 @@ Microsoft Word reference observations.
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
-pin published tiny-vba revision `2ce3f205b1d6cce9a7bc7a6935cee1026c448d18`;
+pin published tiny-vba revision `c578131f76c17228c6c5890a8ae5fdf9086d442c`;
 manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -225,7 +225,7 @@ observation or signature validity is claimed.
 
 ## M7A.4 shared runtime increment (2026-11-04)
 
-The host/editor now pin shared revision `2ce3f205b1d6cce9a7bc7a6935cee1026c448d18`.
+The host/editor now pin shared revision `c578131f76c17228c6c5890a8ae5fdf9086d442c`.
 The flat native profile includes Label, TextBox, CommandButton, CheckBox,
 OptionButton and ToggleButton. Explicit instances have independent fields,
 windows and callbacks. Selected Value/Change/Click/group/Locked, tab ordering,
@@ -307,3 +307,14 @@ Node 22 WASM package tests, strict optional VBA/UI Clippy and optional VBA web
 build PASS. The unchanged proofing timing case passed on a serial retry after
 concurrent builds finished. Additional native control/property/binding/platform
 scope remains open.
+
+M7A.4 unbound ListBox follow-up (2026-11-04): shared revision `c578131f76c17228c6c5890a8ae5fdf9086d442c`
+adds selected native ListBox records, ordinary indexed ten-column row data,
+AddItem/RemoveItem/Clear, selection/Value/Text and column properties. Pointer/
+keyboard input uses authorized focus/validation and ordinary Change/Click frames;
+Stop/resume preserves committed state without replay. The fifth authored native
+package test checks MSForms.ListBox access, trusted selection and exact original
+VBA project bytes on reopen. All eight full-CI gates, five native and actual
+Node 22 WASM cases, strict optional VBA/UI Clippy and optional VBA web build
+PASS. Whole-array list APIs,
+multiple selection, bindings, ComboBox and broader M7A.4 scope remain open.

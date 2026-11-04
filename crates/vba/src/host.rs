@@ -283,6 +283,13 @@ impl WordHost<'_> {
         self.state.authorized = authorized;
     }
 
+    fn require_authorized(&self) -> Result<(), String> {
+        if !self.state.authorized {
+            return Err("Word VBA requires explicit document authorization".into());
+        }
+        Ok(())
+    }
+
     fn begin_batch(&mut self) -> Result<(), String> {
         let text = self.session.doc.plain_text(StoryRef::Body);
         if text != self.state.last_text {
@@ -528,6 +535,29 @@ impl WordVbaProject {
         )
         .map_err(|error| error.to_string())?;
         ide.configure_type_resolver(Some(host.state.objects.clone())).map_err(|error| error.to_string())?;
+        // Package attachment is inert and transactional: construct the entire new project
+        // before publishing it to the caller. Decoding never grants execution permission.
+        if let Some(bytes) = host.session.doc.passthrough.get("word/vbaProject.bin") {
+            let project = vba_project::decode(bytes, &vba_project::Limits::default()).map_err(|error| error.to_string())?;
+            for module in project.modules {
+                let result = match module.kind {
+                    vba_project::ModuleKind::Standard => ide.add_module(&format!("{}.bas", module.name), &module.source),
+                    vba_project::ModuleKind::Class => {
+                        ide.add_module_with_kind(&format!("{}.cls", module.name), &module.source, vba_ide::ModuleKind::Class)
+                    }
+                    vba_project::ModuleKind::Document => {
+                        let code_name = module.code_name.as_deref().ok_or("Word document module has no code name")?;
+                        if !code_name.eq_ignore_ascii_case("ThisDocument") {
+                            return Err(format!("unsupported Word document code name: {code_name}"));
+                        }
+                        ide.add_document_module(&format!("{}.cls", module.name), code_name, &module.source)
+                    }
+                };
+                let id = result.map_err(|error| error.to_string())?;
+                let revision = ide.modules.iter().find(|module| module.id == id).ok_or("imported Word module is unavailable")?.revision;
+                ide.mark_saved(id, revision).map_err(|error| error.to_string())?;
+            }
+        }
         let instance = NEXT_PROJECT
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
             .map_err(|_| "Word VBA project identity exhausted")?;
@@ -623,6 +653,7 @@ impl WordVbaProject {
         arguments: Vec<Value>,
         host: &mut WordHost<'_>,
     ) -> Result<Mode, String> {
+        host.require_authorized()?;
         if !matches!(self.ide.mode(), Mode::Design | Mode::Completed) {
             return Err("Word document events require an idle or completed project".into());
         }
@@ -811,6 +842,7 @@ impl WordVbaProject {
     }
 
     pub fn run(&mut self, entry: &str, host: &mut WordHost<'_>) -> Result<Mode, String> {
+        host.require_authorized()?;
         // Word's macro list can run a `ThisDocument` procedure directly. Deliver
         // it through the host-authorized, owner-bound document path so `Me`
         // binds to the live document exactly as during lifecycle events.
@@ -845,6 +877,7 @@ impl WordVbaProject {
     }
 
     pub fn begin(&mut self, entry: &str, host: &mut WordHost<'_>) -> Result<Mode, String> {
+        host.require_authorized()?;
         self.ide.entry = entry.into();
         if !self.batch_active {
             host.begin_batch()?;
@@ -856,6 +889,7 @@ impl WordVbaProject {
     }
 
     pub fn pause(&mut self, host: &mut WordHost<'_>) -> Result<Mode, String> {
+        host.require_authorized()?;
         self.ide.dispatch(Action::Pause, host).map_err(|error| error.to_string())?;
         for _ in 0..64 {
             if !matches!(self.ide.mode(), Mode::Running) {
@@ -868,12 +902,14 @@ impl WordVbaProject {
     }
 
     pub fn continue_execution(&mut self, host: &mut WordHost<'_>) -> Result<Mode, String> {
+        host.require_authorized()?;
         self.ide.dispatch(Action::Run, host).map_err(|error| error.to_string())?;
         Ok(self.ide.mode())
     }
 
     /// Establish the host batch before the shared UI can execute its first VM slice.
     pub fn prepare_ui_action(&mut self, host: &mut WordHost<'_>) -> Result<(), String> {
+        host.require_authorized()?;
         if !self.batch_active {
             host.begin_batch()?;
             self.batch_active = true;
@@ -887,6 +923,10 @@ impl WordVbaProject {
         if self.application_event.is_some() {
             return self.advance_application_event(host);
         }
+        if !matches!(self.ide.mode(), Mode::Running | Mode::Waiting) {
+            return Ok(self.ide.mode());
+        }
+        host.require_authorized()?;
         if !self.batch_active {
             host.begin_batch()?;
             self.batch_active = true;

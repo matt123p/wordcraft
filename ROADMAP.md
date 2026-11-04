@@ -1,5 +1,10 @@
 # WordCraft roadmap
 
+VBA package update (2026-11-04): the shared plan's M7 authored unchanged-document
+profile has fork-owned package/trust/source/event acceptance; see
+[tiny-vba M7](../tiny-vba/docs/m7-acceptance.md). Edited binary project writeback,
+real signature verification and fresh Office comparison remain explicit limits.
+
 > **M6 VBA update:** 2026-11-01 · Optional shared editor and bounded typed Word document execution are implemented on the M6 branch. Standard Application events, automatic Open/New delivery and Word reference observations remain open; overall readiness estimates are unchanged. See [the integration profile](docs/vba-integration.md).
 
 > **Highlight update:** 2026-10-25 · Highlight shortcut toggles the last chosen colour off when the whole selection has it; explicit colour commands remain setters (#4085). Readiness estimates unchanged.

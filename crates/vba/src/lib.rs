@@ -11,7 +11,7 @@ mod main_story;
 
 pub use host::{ApplicationEvent, WordHost, WordHostState, WordVbaProject};
 pub use main_story::{MainStoryMap, PositionAffinity, PositionError};
-pub use vba_ide::{HostRequest as SourceRequest, SourceId};
+pub use vba_ide::{Action, HostRequest as SourceRequest, Mode, SourceId};
 pub use vba_values::Value;
 
 /// Bounded source/form transfer before decoding or modifying an in-memory project.

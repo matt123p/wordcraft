@@ -296,13 +296,23 @@ impl WordApp {
             }
             host.set_authorized(trusted);
             let commands = editor.show(ui, project.ide(), ui_theme);
-            if let Err(error) = project.prepare_ui_action(&mut host) {
+            if !trusted
+                && (project.is_running() || project.is_waiting() || project.ide().mode() == wordcraft_vba::Mode::Break)
+                && let Err(error) = project.reset(&mut host)
+            {
+                project.ide_mut().message(error);
+            }
+            if trusted && let Err(error) = project.prepare_ui_action(&mut host) {
                 log::warn!("VBA host batch could not start: {error}");
                 project.ide_mut().message(error);
                 ui.ctx().request_repaint();
                 return;
             }
             for command in commands {
+                if !trusted && vba_command_executes(&command) {
+                    project.ide_mut().message("Word VBA requires explicit document authorization");
+                    continue;
+                }
                 if let Err(error) = vba_ui_egui::apply(project.ide_mut(), command, &mut host) {
                     log::warn!("VBA editor command failed: {error}");
                     project.ide_mut().message(error.to_string());
@@ -310,7 +320,7 @@ impl WordApp {
                 }
             }
             source_requests.extend(project.take_source_requests());
-            if let Err(error) = project.advance(&mut host) {
+            if trusted && let Err(error) = project.advance(&mut host) {
                 log::warn!("VBA execution stopped: {error}");
                 project.ide_mut().message(error);
                 ui.ctx().request_repaint();
@@ -462,4 +472,19 @@ impl WordApp {
             }
         }
     }
+}
+
+/// Keep source/compile/design/export commands available while document execution is untrusted.
+#[cfg(feature = "vba")]
+fn vba_command_executes(command: &vba_ui_egui::Command) -> bool {
+    use vba_ui_egui::{Command, FormCommand};
+    use wordcraft_vba::Action;
+    matches!(
+        command,
+        Command::Action(Action::Run | Action::StepInto | Action::StepOver | Action::StepOut)
+            | Command::RunToCursor
+            | Command::Immediate(_)
+            | Command::IsolatedImmediate(_)
+            | Command::Form(FormCommand::Run(..) | FormCommand::Event(..))
+    )
 }

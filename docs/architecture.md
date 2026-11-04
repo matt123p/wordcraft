@@ -1,6 +1,12 @@
 # WordCraft architecture
 
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-11-01 · **Change:** minor (start the optional WordCraft VBA host bridge; main-story position mapping is bounded and isolated in L5; previously major: crate and layer inventory, source counts, proofing languages and module boundaries re-measured from this checkout; previously minor: `proof` is per language: English and Polish; previously major: first committed version; `plan/architecture.md` is local-only) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+VBA package contract update (2026-11-04): source decoding stays in the existing
+pinned tiny-vba `vba-project` crate; document attachment, trust and OOXML preservation
+stay in this fork. There is no encoder or reverse dependency. The
+[M7 writeback/signature decision](../../tiny-vba/docs/decisions/0037-m7-package-preservation-and-writeback.md)
+separates original binary retention from source exports and future edited writeback.
+
+> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-11-04 · **Change:** minor (start the optional WordCraft VBA host bridge; main-story position mapping is bounded and isolated in L5; previously major: crate and layer inventory, source counts, proofing languages and module boundaries re-measured from this checkout; previously minor: `proof` is per language: English and Polish; previously major: first committed version; `plan/architecture.md` is local-only) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
 How WordCraft is built today. The longer design notes in
 `plan/architecture.md` are gitignored and local to the original author's machine; this file is the
@@ -77,3 +83,7 @@ depend on crates in lower layers, and nothing below L6 depends on egui, eframe, 
 | 2026-10-10 | major | First committed architecture doc, from the crates' sources and `AGENTS.md` |
 
 M6 host-event delivery 2026-11-01: wordcraft-vba owns trusted Application event queues and ordered ByRef/lifecycle delivery through shared live WithEvents handles; UI owns source-save tickets bound to document/project instance/revision. Shared code owns metadata projection. See vba-integration.md.
+
+M7 revision history — 2026-11-04: added the authored unchanged-document/package
+profile, original-project/source-export distinction and explicit signature policy.
+See the linked shared M7 acceptance record for exact tests and limitations.

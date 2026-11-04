@@ -18,3 +18,13 @@ vba-ide = { workspace = true }
 vba-values = { workspace = true }
 vba-runtime = { git = "https://github.com/matt123p/tiny-vba", rev = "0b41fd7bf7c78a62323133b290f2f9646667f9d3" }
 vba-vm = { git = "https://github.com/matt123p/tiny-vba", rev = "0b41fd7bf7c78a62323133b290f2f9646667f9d3" }
+vba-project = { git = "https://github.com/matt123p/tiny-vba", rev = "0b41fd7bf7c78a62323133b290f2f9646667f9d3" }
+
+[dev-dependencies]
+wordcraft-docx = { workspace = true }
+cfb = "=0.14.0"
+web-time = { workspace = true }
+zip = { workspace = true }
+
+[target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
+wasm-bindgen-test = "=0.3.79"

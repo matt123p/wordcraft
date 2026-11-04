@@ -156,6 +156,13 @@ impl Reader<'_> {
         let mut glossary = false;
         for (owner, rels) in [("P", package), ("D", document)] {
             for rel in rels.list.iter().filter(|r| !r.external).take(MAX_EMBEDDED_RELS) {
+                // The writer regenerates document XML/relationships. An OPC package signature
+                // over those bytes cannot be carried as a valid signature of the new package.
+                // VBA project signatures use a different relationship and remain opaque.
+                if rel.kind.starts_with("http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/") {
+                    log::warn!("docx: package digital signatures are invalidated by package rewrite and are not retained");
+                    continue;
+                }
                 let tail = rel.kind.rsplit('/').next().unwrap_or("");
                 if HANDLED_RELS.contains(&tail)
                     || (owner == "D" && referenced.contains(rel.id.as_bytes()))

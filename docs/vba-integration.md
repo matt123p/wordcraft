@@ -1,5 +1,18 @@
 # WordCraft VBA integration profile
 
+Updated 2026-11-04: M7 adds inert packaged-source attachment when creating the
+shared editor project. Standard/class modules and the selected `ThisDocument`
+identity decode through the already pinned tiny-vba importer. Malformed or
+unsupported-owner projects refuse before publishing a replacement project;
+original package data remains intact. Every new invocation requires explicit
+host authorization before VBA entry. No automatic Open/New handler execution
+is introduced. Original project/direct signature/data parts survive `.docm`
+save/reopen; source export remains separate from unsupported edited binary
+writeback. Package-wide OPC signatures are dropped/logged on import into the
+rewrite model. Signature bytes do not establish validity or execution trust.
+[M7 acceptance](../../tiny-vba/docs/m7-acceptance.md) records the declared profile,
+source identity, event lifecycle, exact effects and native/WASM evidence.
+
 Updated 2026-11-01. This is the WordCraft side of tiny-vba's M6 host-integration
 milestone. The adapter belongs in `wordcraft-vba` (L5), above the document engine;
 tiny-vba remains a separately versioned shared interpreter/editor. Project import is

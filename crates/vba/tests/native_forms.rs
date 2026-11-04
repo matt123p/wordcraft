@@ -64,7 +64,7 @@ fn native_boolean_instances_run_through_the_word_bridge_and_keep_package_bytes()
         (
             "Launch",
             "Module",
-            "Attribute VB_Name = \"Launch\"\nSub Main()\nDim f As New NativeForm,c As MSForms.Control,u As MSForms.UserForm,n As Long\nDebug.Print VBA.UserForms.Count\nf.Check1.Value=True\nf.ChoiceA.Value=True\nf.ChoiceB.Value=True\nDebug.Print f.ChoiceA.Value\nDebug.Print f.ChoiceB.Value\nf.Show 0\nFor Each c In f.Controls\nn=n+1\nNext c\nDebug.Print n\nn=0\nFor Each u In VBA.UserForms\nIf u Is f Then n=n+1\nNext u\nDebug.Print n\nEnd Sub",
+            "Attribute VB_Name = \"Launch\"\nSub Main()\nDim f As New NativeForm,c As MSForms.Control,u As MSForms.UserForm,n As Long\nDebug.Print VBA.UserForms.Count\nf.Check1.Value=True\nf.ChoiceA.Value=True\nf.ChoiceB.Value=True\nDebug.Print f.ChoiceA.Value\nDebug.Print f.ChoiceB.Value\nf.Show 0\nDebug.Print f.ActiveControl Is f.Entry\nFor Each c In f.Controls\nn=n+1\nNext c\nDebug.Print n\nn=0\nFor Each u In VBA.UserForms\nIf u Is f Then n=n+1\nNext u\nDebug.Print n\nEnd Sub",
         ),
     ]));
     let mut doc = Document::from_text("unchanged");
@@ -77,7 +77,7 @@ fn native_boolean_instances_run_through_the_word_bridge_and_keep_package_bytes()
     assert!(project.run("Main", &mut host).is_err());
     host.set_authorized(true);
     assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Completed, "{:?}", project.ide().diagnostics);
-    assert_eq!(project.ide().output(), vec!["0", "initialized", "False", "True", "7", "1"]);
+    assert_eq!(project.ide().output(), vec!["0", "initialized", "False", "True", "True", "7", "1"]);
     let instance = *project.ide().form_instances().unwrap().first().unwrap();
     assert_eq!(project.ide().form_instance_field(instance, Some(14), "Value").unwrap(), wordcraft_vba::Value::Boolean(true));
     project.prepare_ui_action(&mut host).unwrap();
@@ -89,6 +89,10 @@ fn native_boolean_instances_run_through_the_word_bridge_and_keep_package_bytes()
         }
     }
     assert_eq!(project.ide().form_instance_field(instance, Some(14), "Value").unwrap(), wordcraft_vba::Value::Boolean(false));
+    assert_eq!(
+        project.ide().form_instance_field(instance, None, "VbaActiveControl").unwrap(),
+        project.ide().form_instance_field(instance, None, "VbaCheck1").unwrap()
+    );
     let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument).unwrap();
     assert_eq!(read(&saved).unwrap().passthrough.get("word/vbaProject.bin").unwrap().as_slice(), original);
 }

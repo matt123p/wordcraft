@@ -48,7 +48,7 @@ Microsoft Word reference observations.
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
-pin published tiny-vba revision `d94a7a33ea45424b2191d3e922dfc41f11b5fd6e`;
+pin published tiny-vba revision `69d433c282ce546eb6c7bcf254d270ced385cdf7`;
 manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -225,7 +225,7 @@ observation or signature validity is claimed.
 
 ## M7A.4 shared runtime increment (2026-11-04)
 
-The host/editor now pin shared revision `d94a7a33ea45424b2191d3e922dfc41f11b5fd6e`.
+The host/editor now pin shared revision `69d433c282ce546eb6c7bcf254d270ced385cdf7`.
 The flat native profile includes Label, TextBox, CommandButton, CheckBox,
 OptionButton and ToggleButton. Explicit instances have independent fields,
 windows and callbacks. Selected Value/Change/Click/group/Locked, tab ordering,
@@ -268,7 +268,7 @@ the licensed craft-fonts input; WordCraft 8 gates with serial tests), both nativ
 package cases PASS natively and in actual Node 22 JavaScript/WASM, and strict
 optional VBA/UI Clippy PASS. These are authored integration results.
 
-M7A.4 Forms typing follow-up (2026-11-04): immutable shared revision `d94a7a33ea45424b2191d3e922dfc41f11b5fd6e`
+M7A.4 Forms typing follow-up (2026-11-04): immutable shared revision `69d433c282ce546eb6c7bcf254d270ced385cdf7`
 adds native MSForms.UserForm/Control/Controls and leaf type identity, constrained
 WithEvents interfaces and qualified VBA.UserForms access. The authored native
 package case now enumerates into MSForms.Control/MSForms.UserForm variables
@@ -277,3 +277,14 @@ trust refusal, real boolean input and exact original project bytes on reopen.
 Full CI, native/actual Node 22 WASM package/trust/input tests, strict optional
 VBA/UI Clippy and the optional VBA web build PASS. Broader M7A.4
 control/focus/platform semantics remain open.
+
+M7A.4 native focus follow-up (2026-11-04): shared revision `69d433c282ce546eb6c7bcf254d270ced385cdf7`
+adds canonical ActiveControl/SetFocus, native container Enter/Exit and TextBox
+BeforeUpdate/AfterUpdate with mutable typed cancellation and ordinary callback
+frames. UI focus/input commands retain macro authorization and modal ownership;
+Default/Cancel keyboard activation retains control focus. The native package
+regression checks initial TextBox focus and checkbox focus after actual input,
+with unchanged trust refusal, typed enumeration and original VBA preservation.
+Full CI, native/actual Node 22 WASM package/trust/input tests, strict optional
+VBA/UI Clippy and optional VBA web build PASS. The broader M7A.4
+control/property/platform scope remains open in the shared implementation plan.

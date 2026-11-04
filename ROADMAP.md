@@ -1079,3 +1079,9 @@ M7A.1/M7A.2 update — 2026-11-04: selected native UserForm export/embedded
 import now attaches inertly to the shared designer/runtime/debugger. Source and
 original resources remain distinct, explicit authorization precedes execution,
 and native edited saving/broader semantics/custom-format removal remain open.
+
+M7A.4 progress — 2026-11-04: updated the optional shared VBA engine/editor pin,
+added native boolean form/control integration and enforced execution consent for
+instance input. Authored native package/input/trust regressions accompany the
+change. This is partial M7A.4; native edited persistence and .tvform removal remain
+separate work, with fresh Office observations still NOT_RUN.

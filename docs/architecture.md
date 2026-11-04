@@ -92,3 +92,9 @@ M7A.1/M7A.2 update — 2026-11-04: selected native UserForm export/embedded
 import now attaches inertly to the shared designer/runtime/debugger. Source and
 original resources remain distinct, explicit authorization precedes execution,
 and native edited saving/broader semantics/custom-format removal remain open.
+
+M7A.4 increment — 2026-11-04: the shared native form runtime is pinned at
+`d2de831892e5d2b17557de6b7abb00a83fdfc292`. Form instance commands are classified
+centrally by the shared UI API and retain the existing host execution-consent
+checks. Canonical controls/lifetimes stay in tiny-vba; document state, package
+retention and authorization stay in this fork. Full M7A.4 remains open.

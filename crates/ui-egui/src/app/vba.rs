@@ -309,11 +309,7 @@ impl WordApp {
                 return;
             }
             for command in commands {
-                if !trusted && vba_command_executes(&command) {
-                    project.ide_mut().message("Word VBA requires explicit document authorization");
-                    continue;
-                }
-                if let Err(error) = vba_ui_egui::apply(project.ide_mut(), command, &mut host) {
+                if let Err(error) = dispatch_editor_command(project, &mut host, trusted, command) {
                     log::warn!("VBA editor command failed: {error}");
                     project.ide_mut().message(error.to_string());
                     ui.ctx().request_repaint();
@@ -476,15 +472,56 @@ impl WordApp {
 
 /// Keep source/compile/design/export commands available while document execution is untrusted.
 #[cfg(feature = "vba")]
-fn vba_command_executes(command: &vba_ui_egui::Command) -> bool {
-    use vba_ui_egui::{Command, FormCommand};
-    use wordcraft_vba::Action;
-    matches!(
-        command,
-        Command::Action(Action::Run | Action::StepInto | Action::StepOver | Action::StepOut)
-            | Command::RunToCursor
-            | Command::Immediate(_)
-            | Command::IsolatedImmediate(_)
-            | Command::Form(FormCommand::Run(..) | FormCommand::Event(..))
-    )
+fn dispatch_editor_command(
+    project: &mut wordcraft_vba::WordVbaProject,
+    host: &mut wordcraft_vba::WordHost<'_>,
+    trusted: bool,
+    command: vba_ui_egui::Command,
+) -> Result<(), String> {
+    if !trusted && command.executes_code() {
+        return Err("Word VBA requires explicit document authorization".into());
+    }
+    vba_ui_egui::apply(project.ide_mut(), command, host).map_err(|error| error.to_string())
+}
+
+#[cfg(all(test, feature = "vba"))]
+mod native_form_authorization_tests {
+    use super::dispatch_editor_command;
+    #[test]
+    fn instance_input_cannot_execute_pure_vba_after_document_trust_is_revoked() -> Result<(), Box<dyn std::error::Error>> {
+        let mut session = wordcraft_engine::Session::new(wordcraft_doc::Document::from_text("unchanged"));
+        let mut state = wordcraft_vba::WordHostState::default();
+        let mut host = wordcraft_vba::WordHost::new(&mut session, &mut state)?;
+        let mut project = wordcraft_vba::WordVbaProject::new(&host)?;
+        let id = project.ide_mut().add_form("GuardForm")?;
+        project
+            .ide_mut()
+            .set_text("Private Sub UserForm_QueryClose(Cancel As Integer,CloseMode As Integer)\nDebug.Print \"executed\"\nEnd Sub".into())?;
+        let run = || vba_ui_egui::Command::Form(vba_ui_egui::FormCommand::Run(id, false));
+        assert!(dispatch_editor_command(&mut project, &mut host, false, run()).is_err());
+        assert!(project.ide().output().is_empty());
+        host.set_authorized(true);
+        project.prepare_ui_action(&mut host)?;
+        dispatch_editor_command(&mut project, &mut host, true, run())?;
+        for _ in 0..100 {
+            project.advance(&mut host)?;
+            if project.ide().mode() == wordcraft_vba::Mode::Completed {
+                break;
+            }
+        }
+        let instance = *project.ide().form_instances()?.first().ok_or("instance")?;
+        host.set_authorized(false);
+        assert!(
+            dispatch_editor_command(
+                &mut project,
+                &mut host,
+                false,
+                vba_ui_egui::Command::Form(vba_ui_egui::FormCommand::InstanceEvent(instance, None, None))
+            )
+            .is_err()
+        );
+        assert!(project.ide().output().is_empty());
+        assert!(project.ide().form_instance_visible(instance));
+        Ok(())
+    }
 }

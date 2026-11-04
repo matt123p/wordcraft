@@ -48,7 +48,7 @@ Microsoft Word reference observations.
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
-pin published tiny-vba revision `f680441be2f56249ed88f3e0db3fc8c5489a10d3`;
+pin published tiny-vba revision `d2de831892e5d2b17557de6b7abb00a83fdfc292`;
 manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -222,3 +222,34 @@ control parity, edited persistence and legacy-format removal remain later M7A ta
 See [native contracts](../../tiny-vba/docs/m7a-control-contracts.md) and
 [acceptance](../../tiny-vba/docs/m7a-import-acceptance.md). No fresh Office
 observation or signature validity is claimed.
+
+## M7A.4 shared runtime increment (2026-11-04)
+
+The host/editor now pin shared revision `d2de831892e5d2b17557de6b7abb00a83fdfc292`.
+The flat native profile includes Label, TextBox, CommandButton, CheckBox,
+OptionButton and ToggleButton. Explicit instances have independent fields,
+windows and callbacks. Selected Value/Change/Click/group/Locked, tab ordering,
+Default/Cancel and text-limit semantics and Controls/UserForms lookup are shared.
+Unload separates displayed state/default ownership from retained code references;
+control access reloads initial values and normal last-reference cleanup terminates.
+Original embedded project resources remain unchanged on package save/reopen.
+
+Instance input and form launch use the existing document execution-authorization
+policy before dispatch, including handlers that only execute pure VBA. Editing,
+compiling and exporting source remain available without granting execution trust.
+
+See [the shared runtime record](../../tiny-vba/docs/m7a4-native-runtime.md) and ADRs
+0043/0044 for scope/evidence and remaining requirements. M7A.4 remains in progress;
+list/container/scroll/image/binding/platform packets, full focus/event/type parity,
+native edited persistence and format removal are not implied. Fresh Office
+comparisons remain NOT_RUN.
+
+Validation for this increment: full workspace CI PASS; strict optional VBA/UI
+Clippy PASS; both native package tests PASS natively and in actual Node 22
+JavaScript/WASM; execution-consent regressions PASS through the real editor command
+dispatcher; optional VBA web build PASS. Fixtures are original Rust builders under
+MIT OR Apache-2.0. Package bytes remain unchanged, independently of native edited
+saving. No fresh Office observation or vendor asset is included.
+WordCraft full CI was rerun with `RUST_TEST_THREADS=1` after a PDF timing
+assertion failed during concurrent checks; the isolated PDF case and all eight
+full CI steps pass without a test/threshold change.

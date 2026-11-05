@@ -446,3 +446,18 @@ Native UserForm windows and callback advancement are independent of VBE window
 visibility. The shared form renderer is used while VBE is hidden, and a paused or
 failed callback brings the debugger forward. Document trust checks, source requests
 and project/document ownership still use the existing Word bridge.
+
+M7A.4 native Tabs/Pages mutation — 2026-11-05 (shared revision
+`422c5c2338a05276e353b27018a531bf23231af4`): native collections support
+Add/Remove/Clear, writable Integer Index and runtime-created member Name.
+Reordering preserves aliases and selected identity; collection changes commit
+before ordinary Change/Stop continuations. Added empty Pages and reordered
+native children use the shared renderer; removed Page children reject widget
+input. Original project/source/resource bytes remain separate. Fresh Office
+comparison remains NOT_RUN under M8.5; Controls.Add/Remove, multiple selection,
+bindings and the remaining M7A.4 semantic ledger stay open. Native edited saving
+and .tvform removal remain M7A.5/.6. Integration validation PASS: all 13 native and 13 actual Node/WASM package
+cases, full eight-step CI, strict optional VBA/UI Clippy, thirteen VBA UI cases,
+the hidden-VBE native-form widget case and the optional VBA web check. The new
+package case checks both Tabs and Pages, consent, retained aliases, unchanged
+document text and exact original DOCM VBA bytes.

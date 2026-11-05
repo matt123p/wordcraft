@@ -681,3 +681,47 @@ fn native_dynamic_tabs_and_pages_keep_aliases_trust_and_docm_resources() {
         assert!(project.prepare_ui_action(&mut host).is_err());
     }
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_runtime_controls_selection_and_typenames_preserve_docm_and_refuse_excel_sources() {
+    let source = r#"Attribute VB_Name = "Launch"
+Sub Main()
+Dim f As New NativeForm,t As MSForms.TextBox,l As MSForms.ListBox
+Set t=f.Controls.Add("Forms.TextBox.1","Added")
+t.Value="new"
+Set l=f.List1
+l.AddItem "alpha"
+l.AddItem "beta"
+l.MultiSelect=2
+l.Selected(0)=True
+l.Selected(1)=True
+Debug.Print TypeName(f),TypeName(t),TypeName(l),f.Controls.Count
+Debug.Print t.Value,l.Selected(0),l.Selected(1),IsNull(l.Value)
+On Error Resume Next
+f.Entry.ControlSource="A1"
+Debug.Print Err.Number,f.Entry.ControlSource,f.Entry.Value
+Err.Clear
+l.RowSource="A1:A2"
+Debug.Print Err.Number,l.RowSource,l.ListCount
+f.Show 0
+End Sub"#;
+    let original =
+        form_project(support::project(&[("NativeForm", "BaseClass", fixture::SOURCE), ("Launch", "Module", source)]), fixture::list_companion());
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).unwrap();
+    let mut project = WordVbaProject::new(&host).unwrap();
+    assert!(project.ide().form_instances().unwrap().is_empty());
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output(), vec!["initialized", "NativeForm\tTextBox\tListBox\t5", "new\tTrue\tTrue\tTrue", "380\t\tinitial", "380\t\t2"]);
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument).unwrap();
+    assert_eq!(read(&saved).unwrap().passthrough.get("word/vbaProject.bin").unwrap().as_slice(), original);
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+}

@@ -1,6 +1,6 @@
 # WordCraft VBA integration profile
 
-Updated 2026-11-04: M7 adds inert packaged-source attachment when creating the
+Updated 2026-11-05: M7 adds inert packaged-source attachment when creating the
 shared editor project. Standard/class modules and the selected `ThisDocument`
 identity decode through the already pinned tiny-vba importer. Malformed or
 unsupported-owner projects refuse before publishing a replacement project;
@@ -461,3 +461,18 @@ cases, full eight-step CI, strict optional VBA/UI Clippy, thirteen VBA UI cases,
 the hidden-VBE native-form widget case and the optional VBA web check. The new
 package case checks both Tabs and Pages, consent, retained aliases, unchanged
 document text and exact original DOCM VBA bytes.
+
+
+M7A.4 runtime controls and selection — 2026-11-05 (shared revision
+`91b0c7870b76c2c71dbcc5964563195f6f39498d`): the shared runtime adds
+selected native Controls.Add/Remove/Clear, ListBox Multi/Extended selection and
+IR 12 canonical TypeName. A DOCM regression exercises dynamic typed controls,
+selection, authorization and exact package-resource retention together. Empty
+ControlSource/RowSource remain available; nonempty worksheet sources are refused
+because this embedding supplies no Excel Range capability. No spreadsheet model
+or external object activation is introduced. Selected Excel cell/row bindings live
+in the shared Forms provider and GridCraft's existing workbook bridge. Validation PASS: full WordCraft CI (8 steps), strict optional-VBA/UI Clippy,
+all 14 native and 14 actual Node/WASM package cases, 13 VBA UI tests, the hidden-VBE
+native-form widget case and optional VBA web check. Native edited saving/.tvform removal remain
+M7A.5/.6, the remaining M7A.4 ledger is open, and fresh Office evidence is M8.5
+NOT_RUN.

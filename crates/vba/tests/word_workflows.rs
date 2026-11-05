@@ -306,6 +306,7 @@ fn modal_shared_form_waits_resumes_and_mutates_the_word_document() {
                 visible: true,
                 tab_stop: true,
                 group: None,
+                parent: None,
             },
             Control {
                 id: 2,
@@ -318,6 +319,7 @@ fn modal_shared_form_waits_resumes_and_mutates_the_word_document() {
                 visible: true,
                 tab_stop: true,
                 group: None,
+                parent: None,
             },
         ],
         tab_order: vec![1, 2],

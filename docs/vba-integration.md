@@ -48,7 +48,7 @@ Microsoft Word reference observations.
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
-pin published tiny-vba revision `e246411ff33bf04d43a8c0e8d159c3679db257e9`;
+pin published tiny-vba revision `fe86257c80c178baaa5701b5cf87597e4bc72daa`;
 manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -225,7 +225,7 @@ observation or signature validity is claimed.
 
 ## M7A.4 shared runtime increment (2026-11-04)
 
-The host/editor now pin shared revision `e246411ff33bf04d43a8c0e8d159c3679db257e9`.
+The host/editor now pin shared revision `fe86257c80c178baaa5701b5cf87597e4bc72daa`.
 The flat native profile includes Label, TextBox, CommandButton, CheckBox,
 OptionButton and ToggleButton. Explicit instances have independent fields,
 windows and callbacks. Selected Value/Change/Click/group/Locked, tab ordering,
@@ -368,3 +368,20 @@ Frame validation: all eight native and eight actual Node/WASM package cases PASS
 Full CI (eight gates), strict optional VBA/UI Clippy and the optional VBA web
 build PASS. The Frame case also verifies authorization revocation; runtime text
 and container state never replace original DOCM project/source/resource bytes.
+
+M7A.4 native TabStrip follow-up (2026-11-05): shared revision `6bb45c6f607ecd2ae881ccdb314ace6e3073b29c` adds selected
+native TabStrip records and distinct Tab/Tabs objects, indexed/named lookup,
+enumeration, selection/default properties and authorized pointer/key callbacks.
+Tabs remain separate from form Controls; source/resources remain independent.
+Full M7A.4 remains open for MultiPage, Image/RefEdit, tab structural mutation and
+writable Index/Name, further lifecycle/property/event/binding/platform cases.
+Native edited persistence and .tvform removal remain M7A.5/.6 requirements.
+
+The final TabStrip pin `fe86257c80c178baaa5701b5cf87597e4bc72daa` also rejects oversized
+uncompressed tab character counts before they can alias the compression flag.
+
+TabStrip validation: all nine native and nine actual Node/WASM package cases
+PASS. Full CI (eight gates), strict optional VBA/UI Clippy and the optional VBA
+web build PASS. The new case checks consent, distinct tab identity/defaults,
+disabled input refusal, authorized selection, unchanged source/resources and
+exact DOCM project bytes after reopen, plus authorization revocation.

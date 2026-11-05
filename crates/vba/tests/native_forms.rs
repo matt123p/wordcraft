@@ -401,3 +401,56 @@ End Sub"#,
     let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument).unwrap();
     assert_eq!(read(&saved).unwrap().passthrough.get("word/vbaProject.bin").unwrap().as_slice(), original);
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_tabstrip_objects_and_input_preserve_docm_resources() {
+    let original = form_project(
+        support::project(&[
+            ("NativeForm", "BaseClass", fixture::SOURCE),
+            (
+                "Launch",
+                "Module",
+                r#"Attribute VB_Name = "Launch"
+Sub Main()
+Dim f As New NativeForm,s As MSForms.TabStrip
+Set s=f.Tabs1
+Debug.Print f.Controls.Count,s.Tabs.Count,s.SelectedItem Is s.FirstTab
+s.Value=1
+Debug.Print s.SelectedItem.Caption
+f.Show 0
+End Sub"#,
+            ),
+        ]),
+        fixture::tab_companion(0),
+    );
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).unwrap();
+    let mut project = WordVbaProject::new(&host).unwrap();
+    assert!(project.ide().output().is_empty());
+    assert!(project.ide().form_instances().unwrap().is_empty());
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output(), vec!["initialized", "4\t3\tTrue", "Second😀"]);
+    let f = *project.ide().form_instances().unwrap().first().unwrap();
+    let native = project.ide().native_form(f.source).unwrap().clone();
+    project.prepare_ui_action(&mut host).unwrap();
+    assert!(project.ide_mut().form_instance_tab(f, 14, 2, &mut host).is_err());
+    project.ide_mut().form_instance_tab(f, 14, 0, &mut host).unwrap();
+    for _ in 0..100 {
+        project.advance(&mut host).unwrap();
+        if project.ide().mode() == Mode::Completed {
+            break;
+        }
+    }
+    assert_eq!(project.ide().form_instance_field(f, Some(14), "Value").unwrap(), wordcraft_vba::Value::Long(0));
+    assert_eq!(project.ide().native_form(f.source), Some(&native));
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument).unwrap();
+    assert_eq!(read(&saved).unwrap().passthrough.get("word/vbaProject.bin").unwrap().as_slice(), original);
+}

@@ -579,3 +579,58 @@ End Sub"#,
     let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument).unwrap();
     assert_eq!(read(&saved).unwrap().passthrough.get("word/vbaProject.bin").unwrap().as_slice(), original);
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_refedit_text_preserves_docm_resources_without_an_excel_picker() {
+    let original = form_project(
+        support::project(&[
+            ("NativeForm", "BaseClass", fixture::SOURCE),
+            (
+                "Launch",
+                "Module",
+                r#"Attribute VB_Name = "Launch"
+Sub Main()
+Dim f As New NativeForm,r As RefEdit.RefEdit
+Set r=f.Entry
+Debug.Print r.Value,r.Parent Is f
+f.Show 0
+End Sub"#,
+            ),
+        ]),
+        fixture::refedit_companion(),
+    );
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).unwrap();
+    let mut project = WordVbaProject::new(&host).unwrap();
+    assert!(project.ide().form_instances().unwrap().is_empty());
+    assert!(project.ide().output().is_empty());
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output(), vec!["initialized", "initial\tTrue"]);
+    let f = *project.ide().form_instances().unwrap().first().unwrap();
+    let native = project.ide().native_form(f.source).unwrap().clone();
+    project.prepare_ui_action(&mut host).unwrap();
+    assert!(project.ide_mut().form_instance_drop(f, 12, true, &mut host).is_err());
+    project.ide_mut().form_instance_text(f, 12, vba_values::VbaString::from_utf8("typed reference").unwrap(), (0, 0), &mut host).unwrap();
+    for _ in 0..100 {
+        project.advance(&mut host).unwrap();
+        if project.ide().mode() == Mode::Completed {
+            break;
+        }
+    }
+    assert_eq!(
+        project.ide().form_instance_field(f, Some(12), "VbaText").unwrap(),
+        wordcraft_vba::Value::String(vba_values::VbaString::from_utf8("typed reference").unwrap())
+    );
+    assert_eq!(project.ide().form_range_selection().unwrap(), None);
+    assert_eq!(project.ide().native_form(f.source), Some(&native));
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument).unwrap();
+    assert_eq!(read(&saved).unwrap().passthrough.get("word/vbaProject.bin").unwrap().as_slice(), original);
+}

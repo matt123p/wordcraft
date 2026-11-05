@@ -48,7 +48,7 @@ Microsoft Word reference observations.
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
-pin published tiny-vba revision `4455df4082430d3d0d56412df73defd92c26c1df`;
+pin published tiny-vba revision `21898dced2dfed4649142a5cc84f8792acda896b`;
 manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -423,3 +423,26 @@ check PASS. The new DOCM case verifies inert import, nominal Image/stdole
 picture access, shared immutable resource identity, nonfocusable authorized
 clicks, trust revocation and exact original project bytes after save/reopen.
 These are authored expectations, not fresh Word observations.
+
+M7A.4 native RefEdit follow-up — 2026-11-05 (shared revision `21898dced2dfed4649142a5cc84f8792acda896b`): the shared decoder/runtime adds
+bounded inert native class-table resolution and ordinary RefEdit text/drop
+objects, including nominal metadata and selected input/continuations. WordCraft
+does not advertise an Excel worksheet range-picker service. The package case
+checks inert import, consent, typed text, explicit modeless-picker refusal and
+exact original DOCM VBA bytes; it does not establish Word/RefEdit platform parity.
+Broader RefEdit/platform/property/event/binding/lifecycle semantics and dynamic
+collections remain M7A.4 work; native edited saving/removal stay M7A.5/.6. Fresh
+Office traces remain NOT_RUN under M8.5.
+
+RefEdit validation: full WordCraft CI (8 steps), twelve native and twelve actual
+Node/WASM package cases, strict optional VBA/UI Clippy and optional VBA web
+check PASS. Thirteen existing VBA UI cases and the new native-form widget case
+PASS; the latter checks hidden VBE windows, a real authored button callback and
+Stop/F5 continuation without replay. Its two variants preserve ordinary form
+state and reveal VBE only when a callback pauses/fails. DOCM cases retain exact
+original project bytes and verify execution-consent revocation.
+
+Native UserForm windows and callback advancement are independent of VBE window
+visibility. The shared form renderer is used while VBE is hidden, and a paused or
+failed callback brings the debugger forward. Document trust checks, source requests
+and project/document ownership still use the existing Word bridge.

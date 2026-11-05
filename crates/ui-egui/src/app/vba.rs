@@ -233,11 +233,21 @@ impl WordApp {
         }
     }
 
-    /// The shared VBA editor's floating window, when it is open and a document is showing.
+    /// Advance document-owned VBA and render forms independently of VBE visibility.
     #[cfg(feature = "vba")]
     pub(crate) fn vba_window(&mut self, ctx: &egui::Context, tokens: theme::Tokens) {
         self.sync_vba_document();
-        if !self.vba_open || !self.has_document() {
+        if !self.has_document() {
+            return;
+        }
+        if !self.vba_open
+            && self.vba_project.as_ref().is_none_or(|p| {
+                !p.is_running()
+                    && !p.is_waiting()
+                    && !matches!(p.ide().mode(), wordcraft_vba::Mode::Break | wordcraft_vba::Mode::Failed)
+                    && !p.ide().form_instances().is_ok_and(|instances| instances.into_iter().any(|f| p.ide().form_instance_visible(f)))
+            })
+        {
             return;
         }
         let mut host = match wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state) {
@@ -284,48 +294,60 @@ impl WordApp {
         let mut open = self.vba_open;
         let mut trusted = self.vba_trusted;
         let mut source_requests = Vec::new();
-        egui::Window::new(crate::tl!("Visual Basic")).open(&mut open).default_size([960.0, 680.0]).vscroll(false).show(ctx, |ui| {
-            ui.checkbox(&mut trusted, crate::tl!("Trust this document's VBA and allow it to edit this document"));
-            if !trusted {
-                ui.label(crate::tl!("VBA document access is blocked. Enable document trust above to allow macros to access this document."));
-            }
-            if let Some(message) = project.ide().messages.last() {
-                ui.horizontal_wrapped(|ui| {
-                    ui.label(format!("VBA: {message}"));
-                });
-            }
-            host.set_authorized(trusted);
-            let commands = editor.show(ui, project.ide(), ui_theme);
-            if !trusted
-                && (project.is_running() || project.is_waiting() || project.ide().mode() == wordcraft_vba::Mode::Break)
-                && let Err(error) = project.reset(&mut host)
-            {
-                project.ide_mut().message(error);
-            }
-            if trusted && let Err(error) = project.prepare_ui_action(&mut host) {
-                log::warn!("VBA host batch could not start: {error}");
-                project.ide_mut().message(error);
-                ui.ctx().request_repaint();
-                return;
-            }
-            for command in commands {
-                if let Err(error) = dispatch_editor_command(project, &mut host, trusted, command) {
-                    log::warn!("VBA editor command failed: {error}");
-                    project.ide_mut().message(error.to_string());
-                    ui.ctx().request_repaint();
+        let previous_mode = project.ide().mode();
+        let commands = if open {
+            let mut commands = Vec::new();
+            egui::Window::new(crate::tl!("Visual Basic")).open(&mut open).default_size([960.0, 680.0]).vscroll(false).show(ctx, |ui| {
+                ui.checkbox(&mut trusted, crate::tl!("Trust this document's VBA and allow it to edit this document"));
+                if !trusted {
+                    ui.label(crate::tl!("VBA document access is blocked. Enable document trust above to allow macros to access this document."));
                 }
+                if let Some(message) = project.ide().messages.last() {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.label(format!("VBA: {message}"));
+                    });
+                }
+                commands = editor.show(ui, project.ide(), ui_theme);
+            });
+            commands
+        } else {
+            editor.show_forms(ctx, project.ide(), ui_theme)
+        };
+        host.set_authorized(trusted);
+        if !trusted
+            && (project.is_running() || project.is_waiting() || project.ide().mode() == wordcraft_vba::Mode::Break)
+            && let Err(error) = project.reset(&mut host)
+        {
+            project.ide_mut().message(error);
+        }
+        if trusted && let Err(error) = project.prepare_ui_action(&mut host) {
+            log::warn!("VBA host batch could not start: {error}");
+            project.ide_mut().message(error);
+            ctx.request_repaint();
+            self.vba_open = open;
+            self.vba_trusted = trusted;
+            return;
+        }
+        for command in commands {
+            if let Err(error) = dispatch_editor_command(project, &mut host, trusted, command) {
+                log::warn!("VBA editor command failed: {error}");
+                project.ide_mut().message(error.to_string());
+                ctx.request_repaint();
             }
-            source_requests.extend(project.take_source_requests());
-            if trusted && let Err(error) = project.advance(&mut host) {
-                log::warn!("VBA execution stopped: {error}");
-                project.ide_mut().message(error);
-                ui.ctx().request_repaint();
-            }
-            source_requests.extend(project.take_source_requests());
-            if project.is_running() {
-                ui.ctx().request_repaint();
-            }
-        });
+        }
+        source_requests.extend(project.take_source_requests());
+        if trusted && let Err(error) = project.advance(&mut host) {
+            log::warn!("VBA execution stopped: {error}");
+            project.ide_mut().message(error);
+            ctx.request_repaint();
+        }
+        source_requests.extend(project.take_source_requests());
+        if project.is_running() {
+            ctx.request_repaint();
+        }
+        if project.ide().mode() != previous_mode && matches!(project.ide().mode(), wordcraft_vba::Mode::Break | wordcraft_vba::Mode::Failed) {
+            open = true;
+        }
         if selection_event && !project.selection_event_pending() {
             self.vba_selection = Some((self.session.document_id(), self.session.sel.clone()));
         }

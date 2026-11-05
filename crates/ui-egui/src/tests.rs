@@ -7717,3 +7717,54 @@ fn paused_selection_event_finishes_without_notifying_its_own_later_edits_again()
     assert!(h.state().vba_project.as_ref().expect("project").is_completed());
     assert_eq!(h.state().session.doc.plain_text(wordcraft_doc::StoryRef::Body), "1!");
 }
+
+#[cfg(feature = "vba")]
+#[path = "../../vba/tests/support/native_forms.rs"]
+mod native_form_fixture;
+
+#[cfg(feature = "vba")]
+#[test]
+fn native_userform_windows_and_callbacks_remain_active_with_vbe_hidden() -> Result<(), Box<dyn std::error::Error>> {
+    for stop in [false, true] {
+        let mut a = app();
+        let project = {
+            let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state)?;
+            host.set_authorized(true);
+            let mut project = wordcraft_vba::WordVbaProject::new(&host)?;
+            project.ide_mut().import_native_form_export(
+                "NativeForm.frm",
+                &if stop {
+                    String::from_utf8(native_form_fixture::export())?.replace("Debug.Print Entry.Text", "Stop\nDebug.Print Entry.Text").into_bytes()
+                } else {
+                    native_form_fixture::export()
+                },
+                1252,
+                &[wordcraft_vba::NativeFormResource { name: "NativeForm.frx".into(), bytes: native_form_fixture::companion() }],
+            )?;
+            project.import_source("Main.bas", "Sub Main()\nNativeForm.Show\nEnd Sub")?;
+            assert_eq!(project.run("Main", &mut host)?, wordcraft_vba::Mode::Waiting);
+            project
+        };
+        a.vba_project = Some(project);
+        a.vba_trusted = true;
+        a.vba_open = false;
+        let mut h = egui_kittest::Harness::builder()
+            .with_size(egui::vec2(1200., 900.))
+            .build_ui_state(|ui, a: &mut WordApp| a.vba_window(ui.ctx(), theme::Tokens::light()), a);
+        h.run_steps(8);
+        assert!(!h.state().vba_open);
+        h.get_by_label("Apply").click();
+        h.run_steps(15);
+        if stop {
+            assert_eq!(h.state().vba_project.as_ref().ok_or("project")?.ide().mode(), wordcraft_vba::Mode::Break);
+            assert!(h.state().vba_open, "A stopped callback must reveal the debugger");
+            h.key_press(egui::Key::F5);
+            h.run_steps(15);
+        }
+        let project = h.state().vba_project.as_ref().ok_or("project")?;
+        assert_eq!(project.ide().mode(), wordcraft_vba::Mode::Completed, "{:?}", project.ide().diagnostics);
+        assert_eq!(project.ide().output(), vec!["initialized", "initial"]);
+        assert_eq!(h.state().vba_open, stop);
+    }
+    Ok(())
+}

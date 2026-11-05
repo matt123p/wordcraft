@@ -48,7 +48,7 @@ Microsoft Word reference observations.
 ## M6 task status
 
 Updated 2026-11-01 after the M6 event and attribute/code-view work. Both forks
-pin published tiny-vba revision `18e412caa8d9dfd1a1ba984ea49c42bc490ef8da`;
+pin published tiny-vba revision `4455df4082430d3d0d56412df73defd92c26c1df`;
 manifest and lockfile use immutable Git sources, with no path override.
 
 | Task | Status | Evidence / remaining work |
@@ -225,7 +225,7 @@ observation or signature validity is claimed.
 
 ## M7A.4 shared runtime increment (2026-11-04)
 
-The host/editor now pin shared revision `18e412caa8d9dfd1a1ba984ea49c42bc490ef8da`.
+The host/editor now pin shared revision `4455df4082430d3d0d56412df73defd92c26c1df`.
 The flat native profile includes Label, TextBox, CommandButton, CheckBox,
 OptionButton and ToggleButton. Explicit instances have independent fields,
 windows and callbacks. Selected Value/Change/Click/group/Locked, tab ordering,
@@ -404,3 +404,22 @@ actual Node/WASM package cases, strict optional VBA/UI Clippy and optional VBA
 web check PASS. The new DOCM case verifies inert import, native page selection,
 selected-page child input/refusal, trust revocation and exact original project
 resources after save/reopen. These are authored expectations, not fresh Word traces.
+
+M7A.4 native Image/picture follow-up — 2026-11-05: shared revision
+`4455df4082430d3d0d56412df73defd92c26c1df` adds bounded inert BMP/GIF/JPEG/ICO
+resources, ordinary Image/stdole picture identity and typed assignment/clearing,
+clip/stretch/zoom, alignment/tiling and selected AutoSize/border/effect state.
+Image clicks preserve dirty text focus and ordinary callback/Stop continuations.
+Canonical state stays in VM instances, with immutable shared pixel assets and
+bounded derivative texture caches. Original source/resources remain separate.
+Vector/platform picture services and the full image event/presentation matrix,
+RefEdit, bindings, dynamic collections, platform controls and remaining lifecycle/
+property semantics stay in M7A.4. Native edited saving/.tvform removal remain
+M7A.5/.6; fresh Office observations remain NOT_RUN under M8.5.
+
+Image validation: full WordCraft CI (8 steps), eleven native and eleven actual
+Node/WASM package cases, strict optional VBA/UI Clippy and optional VBA web
+check PASS. The new DOCM case verifies inert import, nominal Image/stdole
+picture access, shared immutable resource identity, nonfocusable authorized
+clicks, trust revocation and exact original project bytes after save/reopen.
+These are authored expectations, not fresh Word observations.

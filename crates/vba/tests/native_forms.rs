@@ -8,6 +8,15 @@ use wordcraft_doc::Document;
 use wordcraft_docx::{Flavor, read, write_as};
 use wordcraft_engine::Session;
 use wordcraft_vba::{WordHost, WordHostState, WordVbaProject};
+fn settle_native(project: &mut WordVbaProject, host: &mut WordHost<'_>) -> Result<(), Box<dyn std::error::Error>> {
+    for _ in 0..500 {
+        project.advance(host)?;
+        if project.ide().mode() != Mode::Running {
+            return Ok(());
+        }
+    }
+    Err("native form timeout".into())
+}
 #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
 fn native_forms_attach_from_docm_inertly_run_after_trust_and_retain_original_resources() {
@@ -1133,6 +1142,86 @@ fn native_modal_pointer_callback_preserves_document_resources() -> Result<(), Bo
     assert_eq!(project.ide().form_instance_field(f, Some(12), "VbaSelLength")?, vba_values::Value::Long(3));
     assert_eq!(project.ide().form_instance_field(f, Some(12), "AutoWordSelect")?, vba_values::Value::Boolean(false));
     assert_eq!(project.ide().output(), vec!["initialized", "down"]);
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "mouse");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(host.session_mut().undo());
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument)?;
+    assert_eq!(read(&saved)?.passthrough.get("word/vbaProject.bin").ok_or("project")?.as_slice(), original);
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+    Ok(())
+}
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_nested_modal_pointer_callback_preserves_document_resources() -> Result<(), Box<dyn std::error::Error>> {
+    let form = format!(
+        "{}\nPrivate Sub Entry_MouseDown(ByVal Button As Integer,ByVal Shift As Integer,ByVal X As Single,ByVal Y As Single)\nDim child As NativeForm\nIf Me.Caption=\"Parent\" Then\nSet child=New NativeForm\nchild.Caption=\"Child\"\nchild.Show\nElse\nStop\nActiveDocument.Content.Text=\"mouse\"\nDebug.Print \"down\"\nEnd If\nEnd Sub",
+        fixture::SOURCE
+    );
+    let original = fixture::add_designer(support::project(&[
+        ("NativeForm", "BaseClass", &form),
+        (
+            "Launch",
+            "Module",
+            "Attribute VB_Name = \"Launch\"\nSub Main()\nNativeForm.Caption=\"Parent\"\nNativeForm.Show\nNativeForm.Entry.SetFocus\nEnd Sub",
+        ),
+    ]));
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state)?;
+    let mut project = WordVbaProject::new(&host)?;
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Waiting);
+    let f = *project.ide().form_instances()?.first().ok_or("form")?;
+    project.prepare_ui_action(&mut host)?;
+    let epoch = project.ide_mut().form_instance_mouse(
+        f,
+        Some(12),
+        vba_ide::FormMouseInput { event: vba_ide::FormMouseEvent::Down, button: 1, shift: 3, x: 72., y: 12., index: -1 },
+        &mut host,
+    )?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Waiting);
+    let parent_epoch = epoch;
+    let child = *project.ide().form_instances()?.last().ok_or("child")?;
+    assert_ne!(child, f);
+    assert_eq!(project.ide().form_instance_modal_rank(f), Some(0));
+    assert_eq!(project.ide().form_instance_modal_rank(child), Some(1));
+    assert!(!project.ide().form_instance_can_deliver(f));
+    project.prepare_ui_action(&mut host)?;
+    let epoch = project.ide_mut().form_instance_mouse(
+        child,
+        Some(12),
+        vba_ide::FormMouseInput { event: vba_ide::FormMouseEvent::Down, button: 1, shift: 3, x: 72., y: 12., index: -1 },
+        &mut host,
+    )?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Break);
+    assert!(project.ide().form_instance_has_modal_window(f));
+    assert!(!project.ide().form_instance_can_deliver(f));
+    assert!(project.ide().form_instance_mouse_result(child, epoch)?.is_none());
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    project.ide_mut().dispatch(Action::Run, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().form_instance_mouse_result(child, epoch)?, Some(true));
+    assert!(project.ide().form_instance_mouse_result(f, parent_epoch)?.is_none());
+    project.prepare_ui_action(&mut host)?;
+    project.ide_mut().form_instance_event(child, None, None, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().form_instance_mouse_result(f, parent_epoch)?, Some(true));
+    assert!(project.ide().form_instance_has_modal_window(f));
+    project.prepare_ui_action(&mut host)?;
+    project.ide_mut().form_instance_text(f, 12, vba_values::VbaString::from_utf8("initial")?, (1, 3), &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().form_instance_field(f, Some(12), "VbaSelStart")?, vba_values::Value::Long(1));
+    assert_eq!(project.ide().form_instance_field(f, Some(12), "VbaSelLength")?, vba_values::Value::Long(3));
+    assert_eq!(project.ide().form_instance_field(f, Some(12), "AutoWordSelect")?, vba_values::Value::Boolean(false));
+    assert_eq!(project.ide().output(), vec!["initialized", "initialized", "down"]);
     assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "mouse");
     assert_eq!(host.session_mut().undo_depth(), 1);
     assert!(host.session_mut().undo());

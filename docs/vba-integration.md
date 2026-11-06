@@ -541,3 +541,13 @@ UI cases, the hidden-editor form case and optional web compilation also pass.
 Full physical key/platform, shortcut, root-window focus, IME/locale/focus behavior,
 accelerators, mouse and the remaining M7A.4 checklist rows stay open. Fresh Office
 comparisons remain M8.5 NOT_RUN. See shared ADR 0070.
+
+M7A.4 keyboard-focus update (2026-11-06): shared revision
+`38578095ba1fc1ae3695f92a6c2e89cdb29d42f6` adds selected root input focus,
+canonical Tab/SetFocus/Space ordering, stopped character/release continuation,
+editor shortcut isolation and matching web text/key normalization (ADR 0071).
+The root eligibility guard distinguishes TabStop=False from disabled controls.
+Full shared gates and WordCraft full CI (8 steps, isolated serial tests), strict
+optional VBA/UI Clippy, 13 VBA UI cases, hidden-editor form, web and all 17 native/
+17 Node-WASM package cases pass. Root eligibility, Stop/Continue, authority,
+text mutation, one undo step and exact original resources are verified. Full M7A.4 and fresh Office comparisons remain open.

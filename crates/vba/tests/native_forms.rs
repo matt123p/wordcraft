@@ -823,3 +823,69 @@ fn native_keyboard_waits_for_debugger_and_preserves_document_authority_and_resou
     assert!(project.prepare_ui_action(&mut host).is_err());
     Ok(())
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_root_keys_distinguish_tabstop_from_disabled_controls_and_keep_docm_resources() -> Result<(), Box<dyn std::error::Error>> {
+    for disabled in [false, true] {
+        let form = format!(
+            "{}\nPrivate Sub UserForm_KeyDown(ByVal k As MSForms.ReturnInteger,ByVal s As Integer)\nStop\nActiveDocument.Content.Text=\"root\"\nDebug.Print \"root\"\nk.Value=0\nEnd Sub",
+            fixture::SOURCE
+        );
+        let launch = format!(
+            "Attribute VB_Name = \"Launch\"\nSub Main()\nNativeForm.Entry.TabStop=False\nNativeForm.Apply.TabStop=False\n{}\nNativeForm.Show 0\nEnd Sub",
+            if disabled { "Dim c As MSForms.Control\nFor Each c In NativeForm.Controls\nc.Enabled=False\nNext c" } else { "" }
+        );
+        let original = fixture::add_designer(support::project(&[("NativeForm", "BaseClass", &form), ("Launch", "Module", &launch)]));
+        let mut doc = Document::from_text("unchanged");
+        doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+        let mut session = Session::new(doc);
+        let mut state = WordHostState::default();
+        let mut host = WordHost::new(&mut session, &mut state)?;
+        let mut project = WordVbaProject::new(&host)?;
+        host.set_authorized(true);
+        assert_eq!(project.run("Main", &mut host)?, Mode::Completed);
+        let f = *project.ide().form_instances()?.first().ok_or("form")?;
+        project.prepare_ui_action(&mut host)?;
+        let epoch = project.ide_mut().form_instance_key(
+            f,
+            None,
+            vba_ide::FormKeyInput::Code { event: vba_ide::FormKeyEvent::Down, code: 65, shift: 0 },
+            &mut host,
+        )?;
+        for _ in 0..500 {
+            project.advance(&mut host)?;
+            if project.ide().mode() != Mode::Running {
+                break;
+            }
+        }
+        assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+        if disabled {
+            assert_eq!(project.ide().mode(), Mode::Break);
+            assert!(project.ide().form_instance_key_result(f, epoch)?.is_none());
+            project.ide_mut().dispatch(Action::Run, &mut host)?;
+            for _ in 0..500 {
+                project.advance(&mut host)?;
+                if project.ide().mode() != Mode::Running {
+                    break;
+                }
+            }
+        }
+        assert_eq!(project.ide().mode(), Mode::Completed, "{:?}", project.ide().diagnostics);
+        assert_eq!(project.ide().form_instance_key_result(f, epoch)?.ok_or("receipt")?.code, 0);
+        assert_eq!(project.ide().output(), if disabled { vec!["initialized", "root"] } else { vec!["initialized"] });
+        if disabled {
+            assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "root");
+            assert_eq!(host.session_mut().undo_depth(), 1);
+            assert!(host.session_mut().undo());
+        }
+        assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+        assert_eq!(
+            read(&write_as(&host.session_mut().doc, Flavor::MacroDocument)?)?.passthrough.get("word/vbaProject.bin").ok_or("project")?.as_slice(),
+            original
+        );
+        host.set_authorized(false);
+        assert!(project.prepare_ui_action(&mut host).is_err());
+    }
+    Ok(())
+}

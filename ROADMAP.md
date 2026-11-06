@@ -1,5 +1,11 @@
 # WordCraft roadmap
 
+M7A.4 keyboard-focus update (2026-11-06): root input eligibility and selected
+Tab/SetFocus/Space ordering are implemented in shared ADR 0071. Full CI (8 steps,
+isolated serial tests), strict optional VBA/UI, form UI/web and all 17 native/
+17 Node-WASM package cases pass, preserving authority, text/undo and resources.
+M7A.4 remains incomplete.
+
 M7A.4 keyboard update (2026-11-06): typed native key callbacks and the shared
 raw-input barrier are pinned. Full CI (8 steps, isolated serial tests), strict
 optional VBA/UI checks, form UI/web and all 16 native/16 Node-WASM package cases

@@ -335,3 +335,19 @@ labels unambiguous. Those extra-number assignments have not been compared with W
 | 2026-10-27 | trivial | File › Options › Proofing › AutoCorrect Options opens its dialog with no document open (Start screen); it did nothing there (#4585) |
 
 M6 editor audit 2026-11-01: shared normal code view hides owned metadata while preserving raw source; code-name Properties, raw inspector, Alt+F11 routing and asynchronous source-save completion are implemented. Document identity renames refuse. See vba-integration.md for evidence and remaining acceptance gates.
+
+M7A.4 TextBox pointer update (2026-11-06): shared ADR 0074 adds selected
+caret, captured drag, double-click cancellation/word selection and Shift extension
+after ordinary mouse callbacks. Native AutoWordSelect is decoded with its inverse
+file bit; new dynamic text controls retain their separate default. Canonical
+UTF-16/CRLF, focus redirects, host authorization, Stop/Continue and Reset/source
+identity remain enforced. Modal bounds stay stable while input waits. Editable
+ComboBox/RefEdit, list/numeric/tab pointer defaults, further platform/selection and
+lifecycle cases remain open; M7A.4 is incomplete and fresh Office comparisons
+remain M8.5 NOT_RUN. Validation receipts follow below.
+
+Accepted shared pin `3e8676cc754f59e06df64d2677c1f64af0216432`: full CI (8 steps, isolated serial tests), strict
+optional VBA/UI Clippy, 20 native and 20 actual Node-WASM package cases, 13 VBA UI
+cases, the hidden-editor form case and web checks pass. The new selection case
+preserves authority, stopped continuation, one undo step and exact original
+document/VBA resources. M7A.4 remains incomplete.

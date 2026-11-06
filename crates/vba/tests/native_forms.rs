@@ -725,3 +725,49 @@ End Sub"#;
     host.set_authorized(false);
     assert!(project.prepare_ui_action(&mut host).is_err());
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_form_arrays_keep_callback_receivers_trust_and_docm_resources() -> Result<(), Box<dyn std::error::Error>> {
+    let launch = "Attribute VB_Name = \"Launch\"\nSub Main()\nDim forms(0 To 1) As New NativeForm,a As NativeForm\nDebug.Print UserForms.Count\nforms(0).Show 0\nforms(0).Entry.Text=\"first\"\nforms(1).Show 0\nforms(1).Entry.Text=\"second\"\nSet a=forms(0)\nSet forms(0)=Nothing\nforms(0).Show 0\nDebug.Print a.Entry.Text,forms(1).Entry.Text,forms(0).Entry.Text\nEnd Sub";
+    let form = fixture::SOURCE.replace("Debug.Print Entry.Text", "ActiveDocument.Content.Text=Entry.Text\r\nDebug.Print Entry.Text");
+    let original = fixture::add_designer(support::project(&[("NativeForm", "BaseClass", &form), ("Launch", "Module", launch)]));
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(read(&write_as(&doc, Flavor::MacroDocument)?)?);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state)?;
+    let mut project = WordVbaProject::new(&host)?;
+    assert!(project.ide().output().is_empty());
+    assert!(project.ide().form_instances()?.is_empty());
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output(), vec!["0", "initialized", "initialized", "initialized", "first\tsecond\tinitial"]);
+    let instances = project.ide().form_instances()?;
+    assert_eq!(instances.len(), 3);
+    let expected = vba_values::Value::String(vba_values::VbaString::from_utf8("second")?);
+    let target = instances
+        .into_iter()
+        .find(|instance| project.ide().form_instance_field(*instance, Some(12), "VbaText").is_ok_and(|value| value == expected))
+        .ok_or("second instance")?;
+    project.prepare_ui_action(&mut host)?;
+    project.ide_mut().form_instance_event(target, Some(13), None, &mut host)?;
+    for _ in 0..500 {
+        project.advance(&mut host)?;
+        if project.ide().mode() != Mode::Running {
+            break;
+        }
+    }
+    assert_eq!(project.ide().mode(), Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output().last().map(String::as_str), Some("second"));
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "second");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(host.session_mut().undo());
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument)?;
+    assert_eq!(read(&saved)?.passthrough.get("word/vbaProject.bin").ok_or("project")?.as_slice(), original);
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+    Ok(())
+}

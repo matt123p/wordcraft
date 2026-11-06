@@ -504,3 +504,15 @@ Pinned shared revision: `5f93e8140b457de6645327b885b263ab6b472e13`.
 Validation PASS: full CI (8 steps), 28 native workflows, two selected Node/WASM
 workflows, strict optional VBA/UI Clippy, 13 VBA UI tests, the hidden-editor form
 case and optional VBA web build. Source/resources and existing budgets are unchanged.
+
+
+M7A.4 As New arrays — 2026-11-06, shared ADR 0068/IR 14: fixed/dynamic
+project-class/native-form elements use ordinary lazy constructor frames. Identity,
+Nothing recreation, Preserve/Erase, private/static/restored storage, canonical
+ByRef and Stop/For Each continuations retain existing limits. A new authored
+DOCM test checks per-window callback receivers, document writes with one undo
+step, trust loss and exact original VBA resources. Pinned validation PASS at
+`d3f00127a47f08996bd89968ebb7ec019ed13c8b`: full CI (8 steps, serial isolated
+tests), strict optional VBA/UI Clippy, 13 VBA UI tests, the hidden-editor form
+case, optional web and all 15 native/15 Node-WASM package cases. Broader M7A.4
+and fresh M8.5 Office comparisons remain open.

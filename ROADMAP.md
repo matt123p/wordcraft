@@ -1,5 +1,11 @@
 # WordCraft roadmap
 
+M7A.4 array update (2026-11-06): shared IR 14 adds lazy project-class/native-form
+array elements with canonical identity, ByRef and constructor continuations.
+Full CI, optional VBA/UI/web and all 15 native/Node-WASM package cases pass.
+Broader M7A.4 remains open; readiness
+estimates are unchanged. See [VBA integration](docs/vba-integration.md).
+
 M7A.4 runtime type update (2026-11-06): native object TypeName uses the existing
 read-only Word object store through aliases without reading document text. Shared
 CI/WASM/WASI, full fork CI, optional VBA/UI/web and Node/WASM identity checks pass. See [the profile](docs/vba-integration.md). Readiness estimates and the

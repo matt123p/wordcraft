@@ -542,6 +542,13 @@ mod native_form_authorization_tests {
             )
             .is_err()
         );
+        let mouse = vba_ui_egui::Command::Form(vba_ui_egui::FormCommand::InstanceMouse(
+            instance,
+            None,
+            wordcraft_vba::FormMouseInput { event: wordcraft_vba::FormMouseEvent::Down, button: 1, shift: 0, x: 0., y: 0., index: -1 },
+        ));
+        let refused = dispatch_editor_command(&mut project, &mut host, false, mouse);
+        assert!(refused.is_err_and(|message| message.contains("requires explicit document authorization")));
         assert!(project.ide().output().is_empty());
         assert!(project.ide().form_instance_visible(instance));
         Ok(())

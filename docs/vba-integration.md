@@ -570,8 +570,13 @@ Reset preserve input identity and source. Event signatures omit unused class-fie
 metadata while preserving typed arguments, executable method fields and all limits.
 Text/list/numeric/indexed-tab pointer defaults, lifecycle and other checklist rows
 remain open; M7A.4 is incomplete and Office observations remain M8.5 NOT_RUN.
-Pinned shared revision `a33419724803ae2211f4538ddefadf1ffef4641a` passes full
+Pinned shared revision `c9f829824c56397c101ac9228c89db289b788458` passes full
 CI (8 steps, isolated serial tests), strict optional VBA/UI Clippy, 13 VBA UI
 cases, hidden-editor form, web and all 19 native/19 Node-WASM package cases.
 Stopped mouse callbacks preserve authority, one-shot text effects, one undo
 step and exact original VBA resources.
+
+The final mouse pin treats form commands as executable unless explicitly known
+inert. The Word UI trust-revocation regression rejects InstanceMouse before
+dispatch. Full CI (8 steps, isolated serial tests), strict optional Clippy, 13
+VBA UI cases, hidden-editor form, web and 19 native/19 Node-WASM cases pass.

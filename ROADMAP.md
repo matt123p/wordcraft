@@ -1,5 +1,16 @@
 # WordCraft roadmap
 
+M7A.4 activation update (2026-11-06): shared ADR 0077 implements selected native
+Show/Hide/modeless activation, reentrant lifecycle guards, unload retirement and
+cross-modeless keyboard continuations. Canonical state stays in ordinary VBA;
+window input uses existing authorization. Automatic document-canvas input
+buffering/replay and full L01/L02/M7A.4 remain open; fresh Office observations
+remain M8.5 NOT_RUN. Pinned shared product
+`a7d9d3122c42ca602e14118da48477ea02522f06`; full CI (8 steps, isolated serial tests), strict optional VBA/UI Clippy, 13
+VBA UI cases, the hidden-editor form, VBA web and all 23 native/23 actual
+Node-WASM package cases pass. The new stopped Deactivate regression preserves
+trust, one-shot document edits, one undo step and original resources.
+
 M7A.4 nested-input update (2026-11-06): shared ADR 0076 services child mouse
 callbacks while a parent mouse/key callback is parked. Raw input scopes share the
 existing 64-event queue; held releases retain their original capture, modal areas

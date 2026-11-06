@@ -351,3 +351,18 @@ optional VBA/UI Clippy, 20 native and 20 actual Node-WASM package cases, 13 VBA 
 cases, the hidden-editor form case and web checks pass. The new selection case
 preserves authority, stopped continuation, one undo step and exact original
 document/VBA resources. M7A.4 remains incomplete.
+
+M7A.4 composite-pointer update (2026-11-06): shared ADR 0075 adds selected
+ComboBox/RefEdit text/drop/picker, list/popup row, numeric step/repeat/drag and
+indexed tab/page-header defaults after ordinary callbacks. Retained modal display
+metadata preserves window presentation while callbacks run, without authorizing
+input. Tabs retain identity through reorder and discard removed targets. Existing
+host consent, snapshots, ordinary VBA state and resource preservation remain in
+force; ComboBox AutoWordSelect preserves its inverse native bit. M7A.4 and the
+full runtime checklist remain incomplete. Fresh Office observations are M8.5
+NOT_RUN; native edited persistence/removal remain separate.
+Pinned shared product `f027c5d14f0a57c6a0ebfa0f1cc2fb393cb9c2b7` passes full CI (8 steps, isolated
+serial tests), strict optional VBA/UI Clippy, 13 VBA UI cases, the hidden-editor
+form case, the VBA web build and all 21 native/21 actual Node-WASM package cases.
+The new modal pointer regression preserves stopped authority, one-shot document
+effects, one undo step and original resources.

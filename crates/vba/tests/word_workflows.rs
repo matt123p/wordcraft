@@ -653,3 +653,40 @@ End Sub"#,
     assert_eq!(host.session_mut().undo_depth(), history);
     Ok(())
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn userforms_without_components_preserve_word_trust_pause_and_undo() -> Result<(), Box<dyn std::error::Error>> {
+    let source = r#"Sub Main()
+Dim items As Object,child As Variant,n As Long
+Set items=VBA.UserForms
+Debug.Print items.Count,TypeName(items)
+For Each child In items
+n=n+1
+Next child
+Debug.Print n
+On Error Resume Next
+Set child=UserForms.Add("Missing")
+Debug.Print Err.Number
+Stop
+Debug.Print UserForms.Count
+End Sub"#;
+    let mut session = Session::new(Document::from_text("unchanged"));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state)?;
+    let mut project = WordVbaProject::new(&host)?;
+    project.import_source("EmptyForms.bas", source)?;
+    let before = host.session_mut().doc.clone();
+    let history = host.session_mut().undo_depth();
+    assert!(project.run("Main", &mut host).is_err());
+    assert!(project.ide().output().is_empty());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Break, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output(), vec!["0\tUserForms", "0", "424"]);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output().last().map(String::as_str), Some("0"));
+    assert!(project.ide().form_instances()?.is_empty());
+    assert_eq!(host.session_mut().doc, before);
+    assert_eq!(host.session_mut().undo_depth(), history);
+    Ok(())
+}

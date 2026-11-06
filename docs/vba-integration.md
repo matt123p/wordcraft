@@ -516,3 +516,15 @@ step, trust loss and exact original VBA resources. Pinned validation PASS at
 tests), strict optional VBA/UI Clippy, 13 VBA UI tests, the hidden-editor form
 case, optional web and all 15 native/15 Node-WASM package cases. Broader M7A.4
 and fresh M8.5 Office comparisons remain open.
+
+
+UserForms without form components — 2026-11-06 (shared ADR 0069):
+the existing built-in collection supports zero Count, empty iteration, aliases
+and runtime type names, Item bounds errors and error 424 for Add of a missing
+form. Normal semantic shadowing and qualified VBA.UserForms remain available.
+No control library or form is loaded by the no-component provider. Authored host
+cases check authorization, Stop/resume and unchanged document/undo state.
+Pinned validation PASS at `0e7a3fea4f306a1aac8207e00b0a2deb206f6737`: full CI
+(8 steps, isolated serial tests), 29 native workflows, three selected Node/WASM
+workflows, strict optional VBA/UI Clippy, 13 VBA UI tests, the hidden-editor form
+case and optional web check. Broader M7A.4 remains open.

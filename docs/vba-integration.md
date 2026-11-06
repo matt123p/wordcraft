@@ -528,3 +528,16 @@ Pinned validation PASS at `0e7a3fea4f306a1aac8207e00b0a2deb206f6737`: full CI
 (8 steps, isolated serial tests), 29 native workflows, three selected Node/WASM
 workflows, strict optional VBA/UI Clippy, 13 VBA UI tests, the hidden-editor form
 case and optional web check. Broader M7A.4 remains open.
+
+M7A.4 keyboard update (2026-11-06): shared revision
+`9fde04ce9ed8eab15b7f0609160617c774c2fc1b` adds selected native typed
+KeyDown/KeyPress/KeyUp callbacks, mutable ByVal MSForms.ReturnInteger, Shift flags
+and ordinary WithEvents delivery. The shared raw-input barrier waits for handlers
+before default edits, preserves Stop/Continue and cancels stale Reset input.
+All 16 native and 16 Node-WASM package cases pass, including keyboard trust,
+debugger continuation, document text, one undo step and exact original resources.
+Full CI (8 steps, isolated serial tests), strict optional VBA/UI Clippy, 13 VBA
+UI cases, the hidden-editor form case and optional web compilation also pass.
+Full physical key/platform, shortcut, root-window focus, IME/locale/focus behavior,
+accelerators, mouse and the remaining M7A.4 checklist rows stay open. Fresh Office
+comparisons remain M8.5 NOT_RUN. See shared ADR 0070.

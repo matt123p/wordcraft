@@ -1,5 +1,10 @@
 # WordCraft roadmap
 
+M7A.4 keyboard update (2026-11-06): typed native key callbacks and the shared
+raw-input barrier are pinned. Full CI (8 steps, isolated serial tests), strict
+optional VBA/UI checks, form UI/web and all 16 native/16 Node-WASM package cases
+pass, including trust, debugger, text mutation, undo and original resources. Full keyboard/platform behavior and M7A.4 remain partial.
+
 M7A.4 empty-collection update (2026-11-06): UserForms now works without a form
 component through the shared existing provider. Count/Item/Add errors, aliases,
 empty iteration, Stop/resume, trust and document/undo invariance are covered by

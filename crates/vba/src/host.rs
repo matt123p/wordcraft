@@ -29,6 +29,14 @@ enum Object {
     Range { start: usize, end: usize },
 }
 
+impl Object {
+    fn default_value_member(&self) -> Option<&'static str> {
+        match self {
+            Self::Range { .. } | Self::Selection => Some("Text"),
+            _ => None,
+        }
+    }
+}
 #[derive(Clone, Debug)]
 struct ObjectEntry {
     document: u64,
@@ -70,6 +78,9 @@ impl WordObjects {
     }
 }
 impl ObjectTypeResolver for WordObjects {
+    fn has_default_value(&self, reference: ObjectRef) -> Result<bool, ForeignError> {
+        Ok(self.get(reference)?.default_value_member().is_some())
+    }
     fn runtime_type_name(&self, reference: ObjectRef) -> Result<Option<String>, ForeignError> {
         Ok(Some(self.class_name(reference)?.into()))
     }
@@ -316,6 +327,14 @@ impl WordHost<'_> {
     }
 
     fn invoke_call(&mut self, mut call: HostCall, object: Object) -> Result<Value, ForeignError> {
+        if call.kind == InvokeKind::DefaultGet {
+            let member = object.default_value_member().ok_or_else(|| failure(438, "object has no default value property"))?;
+            if !call.arguments.is_empty() {
+                return Err(failure(450, "default value getter takes no arguments"));
+            }
+            call.kind = InvokeKind::Get;
+            call.member = member.into();
+        }
         if call.member.len() > 128 {
             return Err(failure(438, "Word member is outside the supported M6 profile"));
         }

@@ -621,3 +621,35 @@ End Sub"#,
     assert_eq!(host.session_mut().doc, before);
     assert_eq!(host.session_mut().undo_depth(), history);
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn vartype_reads_word_text_defaults_without_mutation_or_undo() -> Result<(), Box<dyn std::error::Error>> {
+    let mut session = Session::new(Document::from_text("sentinel text"));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state)?;
+    host.set_authorized(true);
+    let mut project = WordVbaProject::new(&host)?;
+    project.import_source(
+        "Defaults.bas",
+        r#"Sub Main()
+Dim r As Word.Range,o As Object
+Set r=ActiveDocument.Content
+Set o=r
+Debug.Print VarType(r),VBA.VarType(varname:=o),TypeName(r),IsObject(r)
+Debug.Print VarType(Selection),VarType(Application),VarType(ActiveDocument)
+Debug.Print CStr(r)
+Stop
+Debug.Print VarType(o)
+End Sub"#,
+    )?;
+    let before = host.session_mut().doc.clone();
+    let history = host.session_mut().undo_depth();
+    assert_eq!(project.run("Main", &mut host)?, Mode::Break, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output(), vec!["8\t8\tRange\tTrue", "8\t9\t9", "sentinel text\r"]);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output().last().map(String::as_str), Some("8"));
+    assert_eq!(host.session_mut().doc, before);
+    assert_eq!(host.session_mut().undo_depth(), history);
+    Ok(())
+}

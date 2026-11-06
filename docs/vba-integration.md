@@ -489,3 +489,18 @@ object-default evaluation remains a separate gap. Validation PASS: full CI
 (8 steps), strict optional-VBA/UI Clippy, 13 VBA UI tests, the hidden-editor native
 form case, optional web check and both new actual Node/WASM object-store/alias
 cases. Fresh Office comparisons remain M8.5 NOT_RUN and broader M7A.4 stays open.
+
+
+M7A.4 VarType default values — 2026-11-06 (ADR 0067/IR 13): the existing
+Word store supplies pure validated default availability; actual Range/Selection
+reads use the normal authorized Text getter. Object/Variant aliases, Stop/resume
+and CStr(default) retain canonical text including the final paragraph mark.
+Application/Document have no zero-argument default advertised by this adapter.
+Project/native control defaults run through ordinary frames, preserving errors
+and waits. Read-only regressions assert unchanged document and undo history.
+Fresh Office comparisons remain M8.5 NOT_RUN; broader M7A.4 remains open.
+
+Pinned shared revision: `5f93e8140b457de6645327b885b263ab6b472e13`.
+Validation PASS: full CI (8 steps), 28 native workflows, two selected Node/WASM
+workflows, strict optional VBA/UI Clippy, 13 VBA UI tests, the hidden-editor form
+case and optional VBA web build. Source/resources and existing budgets are unchanged.

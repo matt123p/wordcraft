@@ -551,3 +551,14 @@ Full shared gates and WordCraft full CI (8 steps, isolated serial tests), strict
 optional VBA/UI Clippy, 13 VBA UI cases, hidden-editor form, web and all 17 native/
 17 Node-WASM package cases pass. Root eligibility, Stop/Continue, authority,
 text mutation, one undo step and exact original resources are verified. Full M7A.4 and fresh Office comparisons remain open.
+
+M7A.4 accelerator update (2026-11-06): shared ADR 0072 at `7d43f082de4b7827da1e1d93c257ebeb50eca4ae`
+adds persisted native accelerators, canonical Accelerator properties and selected
+Label/button/boolean/Tab/Page Alt actions. Focus validation, Stop/Continue and
+existing authorization apply. Caption underlines use the host theme and fonts.
+Duplicate routing explicitly refuses; non-ASCII/platform ordering, mouse,
+lifecycle and other checklist rows remain open. M7A.4 remains incomplete; fresh
+Office observations remain M8.5 NOT_RUN. Full CI (8 steps, isolated serial tests), strict optional VBA/UI Clippy, 13 VBA
+UI tests, the hidden-editor form case, web and all 18 native/18 Node-WASM package
+cases pass. The accelerator case preserves authorization, one-shot debugger
+continuation, document text, one undo step and original VBA resources.

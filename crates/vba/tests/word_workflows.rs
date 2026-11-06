@@ -588,3 +588,36 @@ fn shared_ui_first_slice_and_later_slices_share_one_native_undo_batch() {
     assert!(host.session_mut().undo());
     assert_eq!(host.session_mut().doc.plain_text(StoryRef::Body), "before");
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn runtime_typenames_inspect_word_aliases_without_reading_text_or_creating_undo() {
+    let mut session = Session::new(Document::from_text("sentinel text"));
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state).unwrap();
+    host.set_authorized(true);
+    let mut project = WordVbaProject::new(&host).unwrap();
+    project
+        .import_source(
+            "Types.bas",
+            r#"Sub Main()
+Dim r As Word.Range,o As Object,v As Variant
+Set r=ActiveDocument.Content
+Set o=r
+Set v=r
+Debug.Print TypeName(r),VBA.TypeName(varname:=o),TypeName(v)
+Debug.Print TypeName(Application),TypeName(ActiveDocument),TypeName(Selection)
+Stop
+Debug.Print TypeName(o)
+End Sub"#,
+        )
+        .unwrap();
+    let before = host.session_mut().doc.clone();
+    let history = host.session_mut().undo_depth();
+    assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Break, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output(), vec!["Range\tRange\tRange", "Application\tDocument\tSelection"]);
+    assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Completed, "{:?}", project.ide().diagnostics);
+    assert_eq!(project.ide().output().last().map(String::as_str), Some("Range"));
+    assert_eq!(host.session_mut().doc, before);
+    assert_eq!(host.session_mut().undo_depth(), history);
+}

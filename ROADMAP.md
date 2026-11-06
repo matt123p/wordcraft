@@ -1,5 +1,10 @@
 # WordCraft roadmap
 
+M7A.4 runtime type update (2026-11-06): native object TypeName uses the existing
+read-only Word object store through aliases without reading document text. Shared
+CI/WASM/WASI, full fork CI, optional VBA/UI/web and Node/WASM identity checks pass. See [the profile](docs/vba-integration.md). Readiness estimates and the
+remaining M7A.4 scope are unchanged.
+
 VBA runtime update (2026-11-05): native dynamic Controls, multiple selection and
 canonical TypeName are integrated from tiny-vba; full CI and native/Node-WASM/UI checks pass. The Word host keeps its
 existing document/trust boundary; worksheet sources require an Excel capability.

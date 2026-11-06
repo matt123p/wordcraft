@@ -476,3 +476,16 @@ all 14 native and 14 actual Node/WASM package cases, 13 VBA UI tests, the hidden
 native-form widget case and optional VBA web check. Native edited saving/.tvform removal remain
 M7A.5/.6, the remaining M7A.4 ledger is open, and fresh Office evidence is M8.5
 NOT_RUN.
+
+
+M7A.4 runtime object names — 2026-11-06 (shared revision
+`c48e109d95074153b37bb342d3206b50a33ee5fa`): the existing Word object store
+provides validated Application/Document/Selection/Range type spellings through
+the shared read-only resolver. TypeName retains actual identity through typed,
+Object and Variant aliases without reading document text or invoking properties.
+Names and work/allocation remain bounded; stale/foreign/closed handles refuse.
+TypeName/VarType/IsArray accept their documented varname named argument. VarType
+object-default evaluation remains a separate gap. Validation PASS: full CI
+(8 steps), strict optional-VBA/UI Clippy, 13 VBA UI tests, the hidden-editor native
+form case, optional web check and both new actual Node/WASM object-store/alias
+cases. Fresh Office comparisons remain M8.5 NOT_RUN and broader M7A.4 stays open.

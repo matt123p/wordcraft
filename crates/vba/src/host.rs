@@ -59,19 +59,27 @@ impl WordObjects {
     }
 }
 
+impl WordObjects {
+    fn class_name(&self, reference: ObjectRef) -> Result<&'static str, ForeignError> {
+        Ok(match self.get(reference)? {
+            Object::Application => "Application",
+            Object::Document => "Document",
+            Object::Selection => "Selection",
+            Object::Range { .. } => "Range",
+        })
+    }
+}
 impl ObjectTypeResolver for WordObjects {
+    fn runtime_type_name(&self, reference: ObjectRef) -> Result<Option<String>, ForeignError> {
+        Ok(Some(self.class_name(reference)?.into()))
+    }
     fn identity(&self) -> u64 {
         self.identity
     }
 
     fn supports_type(&self, reference: ObjectRef, expected: &NominalType) -> Result<bool, ForeignError> {
-        let name = match self.get(reference)? {
-            Object::Application => "application",
-            Object::Document => "document",
-            Object::Selection => "selection",
-            Object::Range { .. } => "range",
-        };
-        Ok(expected.library() == "word" && expected.version() == WORD_TYPES_VERSION && expected.name() == name)
+        let name = self.class_name(reference)?;
+        Ok(expected.library() == "word" && expected.version() == WORD_TYPES_VERSION && expected.name().eq_ignore_ascii_case(name))
     }
 }
 
@@ -1083,4 +1091,26 @@ fn api_catalog() -> Vec<ApiMember> {
         supported: true,
     })
     .collect()
+}
+
+#[cfg(test)]
+mod runtime_type_name_tests {
+    use super::*;
+    #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+    #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+    fn names_validate_the_existing_word_store_and_closed_lifetime() {
+        let objects = WordObjects {
+            identity: 9,
+            document: 7,
+            closed: AtomicBool::new(false),
+            values: RwLock::new([(1, ObjectEntry { document: 7, value: Object::Range { start: 0, end: 0 } })].into()),
+        };
+        let reference = ObjectRef { host: 9, object: 1, generation: 7 };
+        assert_eq!(objects.runtime_type_name(reference).unwrap(), Some("Range".into()));
+        for invalid in [ObjectRef { host: 10, ..reference }, ObjectRef { generation: 8, ..reference }, ObjectRef { object: 2, ..reference }] {
+            assert_eq!(objects.runtime_type_name(invalid).unwrap_err().number, 91);
+        }
+        objects.closed.store(true, Ordering::Relaxed);
+        assert_eq!(objects.runtime_type_name(reference).unwrap_err().number, 91);
+    }
 }

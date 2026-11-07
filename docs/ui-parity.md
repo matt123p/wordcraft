@@ -1,5 +1,18 @@
 # UI parity with Microsoft Word
 
+M7A.4 Font-assignment update (2026-11-07): shared ADR 0082 adds ordinary typed
+Font setters on native UserForms and Font-capable controls. Explicit assignment
+shares an object reference; old aliases survive replacement and unload, and new
+controls still copy independent container defaults. Root setters retain lazy
+load/reload and unrelated objects fail nominal validation before mutation.
+Package cases cover assignment across Stop/Continue, trust and original-resource
+preservation; canvas input tests now use an assigned Font. Shared revision
+`38dacbd178dd8f25c98b4da8338f575e85df8171` passes full CI (eight steps, isolated
+serial tests), strict optional VBA/UI Clippy, 13 VBA UI cases, the hidden-editor
+form and canvas-prefix/Reset flow, VBA web and 26 native/26 actual Node-WASM
+package cases. The host render was inspected. Nothing/external/other-assignment, ambient/platform, appearance and the
+full remaining M7A.4 checklist stay open; fresh Office comparisons are NOT_RUN.
+
 M7A.4 Font update (2026-11-07): shared ADR 0081 retains native StdFont/TextProps
 and VBFrame Font blocks with exact fractional sizes and original resources.
 Ordinary Font objects expose typed attributes, independent instance state and
@@ -122,6 +135,7 @@ Labels → New Document with “One label per recipient” includes all filtered
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-07 | minor | M7A.4 typed native Font assignment, reference lifetime and host regressions; full milestone remains open |
 | 2026-11-07 | minor | M7A.4 native Font metadata, typed objects and local rendering; pinned shared runtime and host regression evidence; full milestone remains open |
 | 2026-10-30 | minor | M6 optional shared VBA editor entry point, source routing and per-document project lifecycle; default document UI remains unobstructed. |
 | 2026-10-28 | trivial | Aligned copies retain their locked document coordinate during middle-button scrolling and can start on secondary selected objects; existing Ctrl and Shift selection behavior stays (#4764) |

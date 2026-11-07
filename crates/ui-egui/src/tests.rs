@@ -7780,7 +7780,7 @@ fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture
             let mut project = wordcraft_vba::WordVbaProject::new(&host)?;
             let pause = if prefix { "Debug.Print Entry.Text" } else { "Stop" };
             let code = format!(
-                "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Initialize()\nMe.BackColor=RGB(230,240,250)\nEntry.BackColor=RGB(250,230,200)\nEntry.ForeColor=RGB(80,30,20)\nEntry.Font.Size=12.25\nEntry.Font.Italic=True\nEntry.Font.Underline=True\nApply.BackColor=RGB(190,220,240)\nApply.ForeColor=RGB(10,50,100)\nEnd Sub\nPrivate Sub UserForm_Deactivate()\nDebug.Print \"deactivated\"\n{pause}\nActiveDocument.Content.Text=\"continued\"\nEnd Sub{}",
+                "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Initialize()\nMe.BackColor=RGB(230,240,250)\nEntry.BackColor=RGB(250,230,200)\nEntry.ForeColor=RGB(80,30,20)\nEntry.Font.Size=12.25\nEntry.Font.Italic=True\nEntry.Font.Underline=True\nSet Apply.Font=Entry.Font\nApply.BackColor=RGB(190,220,240)\nApply.ForeColor=RGB(10,50,100)\nEnd Sub\nPrivate Sub UserForm_Deactivate()\nDebug.Print \"deactivated\"\n{pause}\nActiveDocument.Content.Text=\"continued\"\nEnd Sub{}",
                 if prefix { "\nPrivate Sub Entry_Change()\nDebug.Print \"change\"\nStop\nEnd Sub" } else { "" }
             );
             let export = String::from_utf8(native_form_fixture::export())?.replace(native_form_fixture::SOURCE, &code);

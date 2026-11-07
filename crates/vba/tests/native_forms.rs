@@ -1279,3 +1279,44 @@ fn native_window_deactivation_preserves_trust_stop_and_document_resources() -> R
     assert!(project.prepare_ui_action(&mut host).is_err());
     Ok(())
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_colours_keep_canonical_bits_trusted_continuations_and_original_document_resources() -> Result<(), Box<dyn std::error::Error>> {
+    let form = "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Initialize()\nMe.BackColor=RGB(230,240,250)\nEntry.ForeColor=RGB(80,30,20)\nEnd Sub\nPrivate Sub Apply_Click()\nEntry.BackColor=RGB(250,230,200)\nActiveDocument.Content.Text=CStr(Entry.BackColor)\nStop\nEntry.ForeColor=RGB(1,2,3)\nActiveDocument.Content.Text=ActiveDocument.Content.Text & \":\" & CStr(Entry.ForeColor)\nMe.Hide\nEnd Sub";
+    let original = fixture::add_designer(support::project(&[
+        ("NativeForm", "BaseClass", form),
+        ("Launch", "Module", "Attribute VB_Name = \"Launch\"\nSub Main()\nNativeForm.Show\nEnd Sub"),
+    ]));
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state)?;
+    let mut project = WordVbaProject::new(&host)?;
+    assert!(project.ide().output().is_empty());
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Waiting);
+    let owner = project.ide().form_active_window().ok_or("form")?;
+    assert_eq!(project.ide().form_instance_field(owner, None, "BackColor")?, vba_values::Value::Long(16445670));
+    project.prepare_ui_action(&mut host)?;
+    project.ide_mut().form_instance_event(owner, Some(13), None, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Break);
+    assert_eq!(project.ide().form_instance_field(owner, Some(12), "BackColor")?, vba_values::Value::Long(13166330));
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "13166330");
+    project.ide_mut().dispatch(Action::Run, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Completed);
+    assert_eq!(project.ide().form_instance_field(owner, Some(12), "ForeColor")?, vba_values::Value::Long(197121));
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "13166330\n:197121");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(host.session_mut().undo());
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument)?;
+    assert_eq!(read(&saved)?.passthrough.get("word/vbaProject.bin").ok_or("project")?.as_slice(), original);
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+    Ok(())
+}

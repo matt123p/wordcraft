@@ -361,7 +361,11 @@ impl WordApp {
         // needs a real UI pass, and so does an injected synthetic step, even while the window is
         // hidden.
         crate::control::drain_screenshots(self, ctx);
-        if self.shots.in_flight() || self.synthetic_pending || !self.synthetic.is_empty() {
+        #[cfg(feature = "vba")]
+        let form_input = self.vba_editor.document_input_pending();
+        #[cfg(not(feature = "vba"))]
+        let form_input = false;
+        if form_input || self.shots.in_flight() || self.synthetic_pending || !self.synthetic.is_empty() {
             let viewport = self.active_viewport();
             if ctx.input_for(viewport, |i| i.viewport().visible()) != Some(true) {
                 ctx.send_viewport_cmd_to(viewport, egui::ViewportCommand::RequestPaintWhileHidden);

@@ -1,5 +1,17 @@
 # WordCraft VBA integration profile
 
+M7A.4 document-focus update (2026-11-07): ADR 0078 adds a bounded raw-input
+barrier before document canvas input. Native modeless Deactivate runs through
+existing authorization; Stop retains the original gesture, Continue restores and
+repaints the document before replay, and Reset/source/document/trust/geometry
+changes discard stale input. Reentrant activation also cancels a partially
+replayed pointer capture. RefEdit retains its explicit worksheet-selection path.
+Pinned shared product `ce6482640332cb67ccfe3372886a4039c832437e` passes full CI (8 steps, isolated serial
+tests), strict optional VBA/UI Clippy, 13 VBA UI cases, the hidden-editor form,
+the new document-focus/Reset flow, VBA web and 23 native/23 actual Node-WASM
+package cases. Broader M7A.4 remains incomplete; fresh
+Office observations stay M8.5 NOT_RUN.
+
 M7A.4 activation update (2026-11-06): shared ADR 0077 adds canonical native
 Show/Hide/modeless activation, reentrant lifecycle guards and cross-window key
 continuations. Window focus commands execute VBA through existing authorization;

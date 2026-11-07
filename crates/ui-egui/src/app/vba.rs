@@ -233,6 +233,32 @@ impl WordApp {
         }
     }
 
+    /// Dispatch modeless deactivation before the document receives its raw gesture.
+    #[cfg(feature = "vba")]
+    pub(crate) fn vba_document_raw_input(&mut self, ctx: &egui::Context, raw: &mut egui::RawInput) {
+        self.sync_vba_document();
+        let Some(project) = self.vba_project.as_mut() else {
+            self.vba_editor.cancel_document_input(ctx, raw);
+            return;
+        };
+        let document = self.session.document_id();
+        if self.vba_trusted && self.vba_editor.document_input_ready(project.ide()) {
+            self.vba_open = false;
+        }
+        let visible = !self.vba_open;
+        let area = (self.vba_trusted && !self.ui.backstage).then_some(self.canvas.viewport).flatten();
+        let Some(command) = self.vba_editor.document_raw_input(ctx, project.ide(), document, area, visible, raw) else { return };
+        let result = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state).and_then(|mut host| {
+            host.set_authorized(self.vba_trusted);
+            project.prepare_ui_action(&mut host)?;
+            dispatch_editor_command(project, &mut host, self.vba_trusted, command)
+        });
+        if let Err(error) = result {
+            self.vba_editor.cancel_document_input(ctx, raw);
+            project.ide_mut().message(error);
+        }
+    }
+
     /// Advance document-owned VBA and render forms independently of VBE visibility.
     #[cfg(feature = "vba")]
     pub(crate) fn vba_window(&mut self, ctx: &egui::Context, tokens: theme::Tokens) {

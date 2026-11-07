@@ -9,6 +9,10 @@ impl WordApp {
         if !ctx.will_discard() {
             control::issue_screenshots(self, ctx);
         }
+        #[cfg(feature = "vba")]
+        if !self.vba_open {
+            self.vba_editor.document_input_applied(ctx);
+        }
         // The raw input was consumed by this host frame's passes; only a final UI pass proves
         // the step is done. A discarded pass keeps the queue for the next UI frame.
         if self.synthetic_pending && !ctx.will_discard() {

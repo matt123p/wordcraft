@@ -7768,3 +7768,104 @@ fn native_userform_windows_and_callbacks_remain_active_with_vbe_hidden() -> Resu
     }
     Ok(())
 }
+
+#[cfg(feature = "vba")]
+#[test]
+fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture() -> Result<(), Box<dyn std::error::Error>> {
+    for reset in [false, true] {
+        let mut a = WordApp::new(Session::new(wordcraft_doc::Document::from_text("original document")), Services::default());
+        let project = {
+            let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state)?;
+            host.set_authorized(true);
+            let mut project = wordcraft_vba::WordVbaProject::new(&host)?;
+            let code = "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Deactivate()\nDebug.Print \"deactivated\"\nStop\nActiveDocument.Content.Text=\"continued\"\nEnd Sub";
+            let export = String::from_utf8(native_form_fixture::export())?.replace(native_form_fixture::SOURCE, code);
+            project.ide_mut().import_native_form_export(
+                "NativeForm.frm",
+                export.as_bytes(),
+                1252,
+                &[wordcraft_vba::NativeFormResource { name: "NativeForm.frx".into(), bytes: native_form_fixture::companion() }],
+            )?;
+            project.import_source("Main.bas", "Sub Main()\nNativeForm.Show 0\nEnd Sub")?;
+            assert_eq!(project.run("Main", &mut host)?, wordcraft_vba::Mode::Completed);
+            project
+        };
+        a.vba_project = Some(project);
+        a.vba_trusted = true;
+        a.vba_open = false;
+        let ctx = egui::Context::default();
+        theme::install_fonts(&ctx);
+        let step = |a: &mut WordApp, events: Vec<egui::Event>| {
+            let mut raw = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(1200., 900.))),
+                events,
+                ..Default::default()
+            };
+            a.raw_input_hook(&ctx, &mut raw);
+            let mut out = ctx.run_ui(raw, |ui| {
+                a.logic(ui.ctx());
+                a.ui(ui);
+            });
+            out.textures_delta.clear();
+        };
+        for _ in 0..12 {
+            step(&mut a, vec![]);
+        }
+        let before = a.session.sel.clone();
+        let text = a.session.doc.plain_text(wordcraft_doc::StoryRef::Body);
+        let rect = a.canvas.viewport.ok_or("canvas")?;
+        let pos = rect.right_bottom() - egui::vec2(40., 40.);
+        step(
+            &mut a,
+            [true, false]
+                .into_iter()
+                .map(|pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE })
+                .collect(),
+        );
+        for _ in 0..40 {
+            step(&mut a, vec![]);
+        }
+        assert_eq!(a.vba_project.as_ref().ok_or("project")?.ide().mode(), wordcraft_vba::Mode::Break);
+        assert_eq!(a.session.sel, before);
+        assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), text);
+        {
+            let project = a.vba_project.as_mut().ok_or("project")?;
+            let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state)?;
+            host.set_authorized(true);
+            if reset {
+                project.reset(&mut host)?;
+            } else {
+                project.ide_mut().dispatch(wordcraft_vba::Action::Run, &mut host)?;
+            }
+        }
+        for _ in 0..90 {
+            step(&mut a, vec![]);
+        }
+        assert!(!a.vba_editor.document_input_pending());
+        if reset {
+            assert_eq!(a.session.sel, before);
+            assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), text);
+        } else {
+            assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "continued");
+            assert_eq!(a.vba_project.as_ref().ok_or("project")?.ide().output(), vec!["deactivated"]);
+            assert!(!a.vba_open);
+            assert_ne!(a.session.sel, before);
+            if let Ok(path) = std::env::var("WORDCRAFT_DOCUMENT_SNAPSHOT") {
+                let mut h = egui_kittest::Harness::builder()
+                    .with_size(egui::vec2(1200., 900.))
+                    .with_context_setup(theme::install_fonts)
+                    .wgpu()
+                    .build_ui_state(
+                        |ui, a: &mut WordApp| {
+                            a.logic(ui.ctx());
+                            a.ui(ui);
+                        },
+                        a,
+                    );
+                h.run_steps(5);
+                h.render()?.save(path)?;
+            }
+        }
+    }
+    Ok(())
+}

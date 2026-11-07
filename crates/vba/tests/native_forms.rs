@@ -1457,9 +1457,9 @@ fn native_page_appearance_uses_multipage_without_non_office_members_trusted_cont
 
 #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
-fn native_appearance_font_aliases_and_alignment_preserve_typed_continuations_trusted_continuations_and_original_document_resources()
+fn native_appearance_font_aliases_alignment_and_wrapping_preserve_trusted_continuations_and_original_document_resources()
 -> Result<(), Box<dyn std::error::Error>> {
-    let form = "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Initialize()\nEntry.Font.Name=\"Authored face\"\nEntry.Font.Size=12.25\nEnd Sub\nPrivate Sub Apply_Click()\nDim font As MSForms.NewFont\nSet font=Entry.Font\nSet Heading.Font=font\nSet Me.Font=font\nDebug.Print Heading.Font Is font,Me.Font Is font\nEntry.BackStyle=0\nEntry.BorderColor=RGB(1,2,3)\nEntry.BorderStyle=1\nEntry.FontSize=12.25\nDebug.Print VarType(Entry.BorderStyle),Entry.SpecialEffect\nEntry.TextAlign=MSForms.fmTextAlignRight\nHeading.TextAlign=MSForms.fmTextAlignCenter\nDebug.Print Entry.TextAlign,Heading.TextAlign,VarType(Entry.TextAlign)\nActiveDocument.Content.Text=CStr(font.Size)\nStop\nfont.Bold=True\nfont.Size=14.5\nEntry.SpecialEffect=3\nActiveDocument.Content.Text=ActiveDocument.Content.Text & \":\" & CStr(font.Size)\nMe.Hide\nEnd Sub";
+    let form = "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Initialize()\nEntry.Font.Name=\"Authored face\"\nEntry.Font.Size=12.25\nEnd Sub\nPrivate Sub Apply_Click()\nDim font As MSForms.NewFont\nSet font=Entry.Font\nSet Heading.Font=font\nSet Me.Font=font\nDebug.Print Heading.Font Is font,Me.Font Is font\nEntry.BackStyle=0\nEntry.BorderColor=RGB(1,2,3)\nEntry.BorderStyle=1\nEntry.FontSize=12.25\nDebug.Print VarType(Entry.BorderStyle),Entry.SpecialEffect\nEntry.TextAlign=MSForms.fmTextAlignRight\nHeading.TextAlign=MSForms.fmTextAlignCenter\nDebug.Print Entry.TextAlign,Heading.TextAlign,VarType(Entry.TextAlign)\nEntry.WordWrap=False\nHeading.WordWrap=False\nApply.WordWrap=True\nDebug.Print VarType(Entry.WordWrap),Heading.WordWrap,Apply.WordWrap\nActiveDocument.Content.Text=CStr(font.Size)\nStop\nfont.Bold=True\nfont.Size=14.5\nEntry.SpecialEffect=3\nActiveDocument.Content.Text=ActiveDocument.Content.Text & \":\" & CStr(font.Size)\nMe.Hide\nEnd Sub";
     let original = fixture::add_designer(support::project(&[
         ("NativeForm", "BaseClass", form),
         ("Launch", "Module", "Attribute VB_Name = \"Launch\"\nSub Main()\nNativeForm.Show\nEnd Sub"),
@@ -1481,7 +1481,7 @@ fn native_appearance_font_aliases_and_alignment_preserve_typed_continuations_tru
     settle_native(&mut project, &mut host)?;
     assert_eq!(project.ide().mode(), Mode::Break);
     assert_eq!(project.ide().form_instance_font(owner, Some(12))?.name, "Authored face");
-    assert_eq!(project.ide().output(), vec!["True\tTrue", "3\t0", "3\t2\t3"]);
+    assert_eq!(project.ide().output(), vec!["True\tTrue", "3\t0", "3\t2\t3", "11\tFalse\tTrue"]);
     assert_eq!(project.ide().form_instance_font(owner, Some(11))?.size, 122500);
     assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "12.25");
     project.ide_mut().dispatch(Action::Run, &mut host)?;
@@ -1495,7 +1495,9 @@ fn native_appearance_font_aliases_and_alignment_preserve_typed_continuations_tru
     assert_eq!(project.ide().form_instance_field(owner, Some(12), "BackStyle")?, vba_values::Value::Long(0));
     assert_eq!(project.ide().form_instance_field(owner, Some(12), "TextAlign")?, vba_values::Value::Long(3));
     assert_eq!(project.ide().form_instance_field(owner, Some(11), "TextAlign")?, vba_values::Value::Long(2));
-    assert_eq!(project.ide().output(), vec!["True\tTrue", "3\t0", "3\t2\t3"]);
+    assert_eq!(project.ide().form_instance_field(owner, Some(12), "WordWrap")?, vba_values::Value::Boolean(false));
+    assert_eq!(project.ide().form_instance_field(owner, Some(13), "WordWrap")?, vba_values::Value::Boolean(true));
+    assert_eq!(project.ide().output(), vec!["True\tTrue", "3\t0", "3\t2\t3", "11\tFalse\tTrue"]);
     assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "12.25\n:14.5");
     assert_eq!(host.session_mut().undo_depth(), 1);
     assert!(host.session_mut().undo());

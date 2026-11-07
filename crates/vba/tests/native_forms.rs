@@ -127,7 +127,7 @@ fn native_text_selection_and_input_preserve_docm_project_bytes() {
             (
                 "Launch",
                 "Module",
-                "Attribute VB_Name = \"Launch\"\nSub Main()\nDim f As New NativeForm,t As MSForms.TextBox\nSet t=f.Entry\nt.Text=\"abcde\"\nt.SelStart=1\nt.SelLength=2\nt.SelText=\"X\"\nf.Show 0\nDebug.Print t.MultiLine\nDebug.Print t.PasswordChar\nDebug.Print t.Text\nDebug.Print t.SelStart\nEnd Sub",
+                "Attribute VB_Name = \"Launch\"\nSub Main()\nDim f As New NativeForm,t As MSForms.TextBox\nSet t=f.Entry\nt.Text=\"abcde\"\nt.SelStart=1\nt.SelLength=2\nt.SelText=\"X\"\nf.Show 0\nDebug.Print t.MultiLine\nDebug.Print t.PasswordChar\nDebug.Print t.Text\nDebug.Print t.SelStart\nt.HideSelection=False\nt.SelStart=1\nt.SelLength=2\nDebug.Print VarType(t.HideSelection),t.HideSelection\nStop\nDebug.Print t.SelStart,t.SelLength\nEnd Sub",
             ),
         ]),
         fixture::text_companion(0xacf0481b, 42),
@@ -141,8 +141,14 @@ fn native_text_selection_and_input_preserve_docm_project_bytes() {
     assert!(project.ide().output().is_empty());
     assert!(project.run("Main", &mut host).is_err());
     host.set_authorized(true);
-    assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Completed);
-    assert_eq!(project.ide().output(), vec!["initialized", "True", "*", "aXde", "2"]);
+    assert_eq!(project.run("Main", &mut host).unwrap(), Mode::Break);
+    let stopped = *project.ide().form_instances().unwrap().first().unwrap();
+    assert_eq!(project.ide().form_instance_field(stopped, Some(12), "HideSelection").unwrap(), wordcraft_vba::Value::Boolean(false));
+    assert_eq!(project.ide().form_instance_field(stopped, Some(12), "VbaSelLength").unwrap(), wordcraft_vba::Value::Long(2));
+    project.ide_mut().dispatch(Action::Run, &mut host).unwrap();
+    settle_native(&mut project, &mut host).unwrap();
+    assert_eq!(project.ide().mode(), Mode::Completed);
+    assert_eq!(project.ide().output(), vec!["initialized", "True", "*", "aXde", "2", "11\tFalse", "1\t2"]);
     let f = *project.ide().form_instances().unwrap().first().unwrap();
     project.prepare_ui_action(&mut host).unwrap();
     project.ide_mut().form_instance_text(f, 12, vba_values::VbaString::from_utf8("z").unwrap(), (1, 0), &mut host).unwrap();

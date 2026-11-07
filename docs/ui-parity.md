@@ -1,5 +1,21 @@
 # UI parity with Microsoft Word
 
+M7A.4 Font update (2026-11-07): shared ADR 0081 retains native StdFont/TextProps
+and VBFrame Font blocks with exact fractional sizes and original resources.
+Ordinary Font objects expose typed attributes, independent instance state and
+container defaults for runtime-added controls and Pages. Local rendering uses
+canonical values and existing host fonts; optional face selection belongs to the
+caller. Extreme display sizes are bounded with a visible notice while retaining
+the canonical value. Host package cases cover trust refusal, typed aliases,
+Stop/Continue and unchanged original VBA resources; canvas tests exercise authored
+typography with existing activation/input ordering.
+Pinned shared product `f899c9925de3e2d4ef838f8ac78287ec9b2f4c2b` passes full CI
+(all eight steps, isolated serial tests), strict optional VBA/UI Clippy, 13 VBA
+UI cases, the hidden-editor form, the canvas-prefix/Reset flow, VBA web and all
+25 native/25 actual Node-WASM package cases. The host document render was inspected. Font replacement, ambient/platform realization, borders/effects,
+transparency and the remaining full M7A.4 checklist stay open. Fresh Office
+comparisons remain M8.5 NOT_RUN.
+
 M7A.4 colour update (2026-11-07): shared ADR 0080 retains native BackColor/ForeColor
 bits and file defaults, exposes ordinary typed properties and paints authored RGB
 values through the shared form renderer. Optional platform/client palette lookup
@@ -106,6 +122,7 @@ Labels → New Document with “One label per recipient” includes all filtered
 
 | Date | Change | Summary |
 |---|---|---|
+| 2026-11-07 | minor | M7A.4 native Font metadata, typed objects and local rendering; pinned shared runtime and host regression evidence; full milestone remains open |
 | 2026-10-30 | minor | M6 optional shared VBA editor entry point, source routing and per-document project lifecycle; default document UI remains unobstructed. |
 | 2026-10-28 | trivial | Aligned copies retain their locked document coordinate during middle-button scrolling and can start on secondary selected objects; existing Ctrl and Shift selection behavior stays (#4764) |
 | 2026-10-28 | trivial | Ctrl/Command+Shift drags a selected floating object into an axis-aligned copy (#4764); synthetic Linux interaction and persistence controls, native desktop and Word untested; gap/readiness estimates unchanged |

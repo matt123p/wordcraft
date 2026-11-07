@@ -7772,14 +7772,18 @@ fn native_userform_windows_and_callbacks_remain_active_with_vbe_hidden() -> Resu
 #[cfg(feature = "vba")]
 #[test]
 fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture() -> Result<(), Box<dyn std::error::Error>> {
-    for reset in [false, true] {
+    for (reset, prefix) in [(false, false), (true, false), (false, true), (true, true)] {
         let mut a = WordApp::new(Session::new(wordcraft_doc::Document::from_text("original document")), Services::default());
         let project = {
             let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state)?;
             host.set_authorized(true);
             let mut project = wordcraft_vba::WordVbaProject::new(&host)?;
-            let code = "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Deactivate()\nDebug.Print \"deactivated\"\nStop\nActiveDocument.Content.Text=\"continued\"\nEnd Sub";
-            let export = String::from_utf8(native_form_fixture::export())?.replace(native_form_fixture::SOURCE, code);
+            let pause = if prefix { "Debug.Print Entry.Text" } else { "Stop" };
+            let code = format!(
+                "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Deactivate()\nDebug.Print \"deactivated\"\n{pause}\nActiveDocument.Content.Text=\"continued\"\nEnd Sub{}",
+                if prefix { "\nPrivate Sub Entry_Change()\nDebug.Print \"change\"\nStop\nEnd Sub" } else { "" }
+            );
+            let export = String::from_utf8(native_form_fixture::export())?.replace(native_form_fixture::SOURCE, &code);
             project.ide_mut().import_native_form_export(
                 "NativeForm.frm",
                 export.as_bytes(),
@@ -7815,19 +7819,21 @@ fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture
         let text = a.session.doc.plain_text(wordcraft_doc::StoryRef::Body);
         let rect = a.canvas.viewport.ok_or("canvas")?;
         let pos = rect.right_bottom() - egui::vec2(40., 40.);
-        step(
-            &mut a,
-            [true, false]
-                .into_iter()
-                .map(|pressed| egui::Event::PointerButton { pos, button: egui::PointerButton::Primary, pressed, modifiers: egui::Modifiers::NONE })
-                .collect(),
-        );
+        let mut events = if prefix { vec![egui::Event::Paste("pasted".into())] } else { vec![] };
+        events.extend([true, false].into_iter().map(|pressed| egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        }));
+        step(&mut a, events);
         for _ in 0..40 {
             step(&mut a, vec![]);
         }
         assert_eq!(a.vba_project.as_ref().ok_or("project")?.ide().mode(), wordcraft_vba::Mode::Break);
         assert_eq!(a.session.sel, before);
         assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), text);
+        assert_eq!(a.vba_project.as_ref().ok_or("project")?.ide().output(), if prefix { vec!["change"] } else { vec!["deactivated"] });
         {
             let project = a.vba_project.as_mut().ok_or("project")?;
             let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state)?;
@@ -7847,7 +7853,10 @@ fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture
             assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), text);
         } else {
             assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), "continued");
-            assert_eq!(a.vba_project.as_ref().ok_or("project")?.ide().output(), vec!["deactivated"]);
+            assert_eq!(
+                a.vba_project.as_ref().ok_or("project")?.ide().output(),
+                if prefix { vec!["change", "deactivated", "pasted"] } else { vec!["deactivated"] }
+            );
             assert!(!a.vba_open);
             assert_ne!(a.session.sel, before);
             if let Ok(path) = std::env::var("WORDCRAFT_DOCUMENT_SNAPSHOT") {

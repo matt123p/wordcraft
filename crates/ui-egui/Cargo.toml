@@ -30,7 +30,7 @@ wordcraft-engine = { workspace = true }
 wordcraft-zotero = { workspace = true }
 egui = { workspace = true, features = ["default_fonts", "monochrome_emoji_fonts"] }
 wordcraft-vba = { workspace = true, optional = true }
-vba-ui-egui = { git = "https://github.com/matt123p/tiny-vba", rev = "38dacbd178dd8f25c98b4da8338f575e85df8171", optional = true }
+vba-ui-egui = { git = "https://github.com/matt123p/tiny-vba", rev = "23dab09fec89767c040693391f25647102ffdf1e", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = { workspace = true }

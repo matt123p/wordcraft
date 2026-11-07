@@ -1407,3 +1407,100 @@ fn native_font_assignment_keeps_shared_identity_trusted_continuations_and_origin
     assert!(project.prepare_ui_action(&mut host).is_err());
     Ok(())
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_page_appearance_uses_multipage_without_non_office_members_trusted_continuations_and_original_document_resources()
+-> Result<(), Box<dyn std::error::Error>> {
+    let form = "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Initialize()\nEntry.Font.Name=\"Authored face\"\nEntry.Font.Size=12.25\nEnd Sub\nPrivate Sub Apply_Click()\nDim font As MSForms.NewFont\nSet font=Entry.Font\nSet Heading.Font=font\nSet Me.Font=font\nDebug.Print Heading.Font Is font,Me.Font Is font\nDim m As Object,p As Object,c As Object\nSet m=Me.Controls.Add(\"Forms.MultiPage.1\")\nSet p=m.Pages.Add()\nm.FontSize=17.25\nSet c=p.Controls.Add(\"Forms.TextBox.1\")\nDebug.Print c.FontSize,c.Parent Is p,p.Parent Is m\nOn Error Resume Next\nDebug.Print p.Font\nDebug.Print Err.Number\nErr.Clear\np.BackColor=1\nDebug.Print Err.Number\nOn Error GoTo 0\nActiveDocument.Content.Text=CStr(font.Size)\nStop\nfont.Bold=True\nfont.Size=14.5\nActiveDocument.Content.Text=ActiveDocument.Content.Text & \":\" & CStr(font.Size)\nMe.Hide\nEnd Sub";
+    let original = fixture::add_designer(support::project(&[
+        ("NativeForm", "BaseClass", form),
+        ("Launch", "Module", "Attribute VB_Name = \"Launch\"\nSub Main()\nNativeForm.Show\nEnd Sub"),
+    ]));
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state)?;
+    let mut project = WordVbaProject::new(&host)?;
+    assert!(project.ide().output().is_empty());
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Waiting);
+    let owner = project.ide().form_active_window().ok_or("form")?;
+    assert_eq!(project.ide().form_instance_font(owner, Some(12))?.size, 122500);
+    project.prepare_ui_action(&mut host)?;
+    project.ide_mut().form_instance_event(owner, Some(13), None, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Break);
+    assert_eq!(project.ide().form_instance_font(owner, Some(12))?.name, "Authored face");
+    assert_eq!(project.ide().output(), vec!["True\tTrue", "17.25\tTrue\tTrue", "438", "438"]);
+    assert_eq!(project.ide().form_instance_font(owner, Some(11))?.size, 122500);
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "12.25");
+    project.ide_mut().dispatch(Action::Run, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Completed);
+    assert_eq!((project.ide().form_instance_font(owner, Some(12))?.size, project.ide().form_instance_font(owner, Some(12))?.weight), (145000, 700));
+    assert_eq!(project.ide().form_instance_font(owner, Some(11))?.size, 145000);
+    assert_eq!(project.ide().form_instance_font(owner, None)?.weight, 700);
+    assert_eq!(project.ide().output(), vec!["True\tTrue", "17.25\tTrue\tTrue", "438", "438"]);
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "12.25\n:14.5");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(host.session_mut().undo());
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument)?;
+    assert_eq!(read(&saved)?.passthrough.get("word/vbaProject.bin").ok_or("project")?.as_slice(), original);
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+    Ok(())
+}
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn native_appearance_and_font_aliases_preserve_typed_continuations_trusted_continuations_and_original_document_resources()
+-> Result<(), Box<dyn std::error::Error>> {
+    let form = "Attribute VB_Name = \"NativeForm\"\nAttribute VB_PredeclaredId = True\nPrivate Sub UserForm_Initialize()\nEntry.Font.Name=\"Authored face\"\nEntry.Font.Size=12.25\nEnd Sub\nPrivate Sub Apply_Click()\nDim font As MSForms.NewFont\nSet font=Entry.Font\nSet Heading.Font=font\nSet Me.Font=font\nDebug.Print Heading.Font Is font,Me.Font Is font\nEntry.BackStyle=0\nEntry.BorderColor=RGB(1,2,3)\nEntry.BorderStyle=1\nEntry.FontSize=12.25\nDebug.Print VarType(Entry.BorderStyle),Entry.SpecialEffect\nActiveDocument.Content.Text=CStr(font.Size)\nStop\nfont.Bold=True\nfont.Size=14.5\nEntry.SpecialEffect=3\nActiveDocument.Content.Text=ActiveDocument.Content.Text & \":\" & CStr(font.Size)\nMe.Hide\nEnd Sub";
+    let original = fixture::add_designer(support::project(&[
+        ("NativeForm", "BaseClass", form),
+        ("Launch", "Module", "Attribute VB_Name = \"Launch\"\nSub Main()\nNativeForm.Show\nEnd Sub"),
+    ]));
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let mut host = WordHost::new(&mut session, &mut state)?;
+    let mut project = WordVbaProject::new(&host)?;
+    assert!(project.ide().output().is_empty());
+    assert!(project.run("Main", &mut host).is_err());
+    host.set_authorized(true);
+    assert_eq!(project.run("Main", &mut host)?, Mode::Waiting);
+    let owner = project.ide().form_active_window().ok_or("form")?;
+    assert_eq!(project.ide().form_instance_font(owner, Some(12))?.size, 122500);
+    project.prepare_ui_action(&mut host)?;
+    project.ide_mut().form_instance_event(owner, Some(13), None, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Break);
+    assert_eq!(project.ide().form_instance_font(owner, Some(12))?.name, "Authored face");
+    assert_eq!(project.ide().output(), vec!["True\tTrue", "3\t0"]);
+    assert_eq!(project.ide().form_instance_font(owner, Some(11))?.size, 122500);
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "12.25");
+    project.ide_mut().dispatch(Action::Run, &mut host)?;
+    settle_native(&mut project, &mut host)?;
+    assert_eq!(project.ide().mode(), Mode::Completed);
+    assert_eq!((project.ide().form_instance_font(owner, Some(12))?.size, project.ide().form_instance_font(owner, Some(12))?.weight), (145000, 700));
+    assert_eq!(project.ide().form_instance_font(owner, Some(11))?.size, 145000);
+    assert_eq!(project.ide().form_instance_font(owner, None)?.weight, 700);
+    assert_eq!(project.ide().form_instance_field(owner, Some(12), "BorderStyle")?, vba_values::Value::Long(0));
+    assert_eq!(project.ide().form_instance_field(owner, Some(12), "SpecialEffect")?, vba_values::Value::Long(3));
+    assert_eq!(project.ide().form_instance_field(owner, Some(12), "BackStyle")?, vba_values::Value::Long(0));
+    assert_eq!(project.ide().output(), vec!["True\tTrue", "3\t0"]);
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "12.25\n:14.5");
+    assert_eq!(host.session_mut().undo_depth(), 1);
+    assert!(host.session_mut().undo());
+    assert_eq!(host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    let saved = write_as(&host.session_mut().doc, Flavor::MacroDocument)?;
+    assert_eq!(read(&saved)?.passthrough.get("word/vbaProject.bin").ok_or("project")?.as_slice(), original);
+    host.set_authorized(false);
+    assert!(project.prepare_ui_action(&mut host).is_err());
+    Ok(())
+}

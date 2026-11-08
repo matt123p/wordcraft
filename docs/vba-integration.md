@@ -1,5 +1,18 @@
 # WordCraft VBA integration profile
 
+M7A.4 AutoTab (2026-11-08): shared ADR 0092 implements native TextBox/ComboBox
+bit-30 import, ordinary Boolean False defaults and accepted user-edit tab
+traversal through existing validation/focus continuations. Actual edit cause
+survives autocomplete with unchanged text; caret-only and programmatic changes
+stay passive. Package coverage checks imported typed state, Stop/Continue,
+authorized text edits, focus transfer and original project preservation.
+Shared revision `e5a62681f074dab000894118fa71977e438e26df`. All eight CI steps pass in isolation with one test
+thread, along with strict optional Clippy, 13 VBA UI cases plus hidden-editor/
+canvas cases, the VBA-enabled web build and all 28 native/28 Node 22 WASM package
+cases. The dark host canvas was inspected. Thirteen shared lockfile packages
+changed by revision only. Full M7A.4 remains open; edited native
+saving and fresh Office observations remain M7A.5 and M8.5 NOT_RUN.
+
 M7A.4 HideSelection (2026-11-07): shared ADR 0091 implements native
 TextBox/ComboBox bit-29 flags, ordinary Boolean state and True file/dynamic
 defaults. Inactive selected text stays highlighted when False; both ComboBox

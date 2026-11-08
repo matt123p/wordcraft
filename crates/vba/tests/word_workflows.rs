@@ -324,17 +324,24 @@ fn modal_shared_form_waits_resumes_and_mutates_the_word_document() {
         ],
         tab_order: vec![1, 2],
     };
-    let archive = vba_ide::form_archive::encode(
-        &form,
-        "Private Sub TextBox1_Change()\nActiveDocument.Content.Text = TextBox1.Text\nEnd Sub\nPrivate Sub CommandButton1_Click()\nMe.Hide\nEnd Sub",
-    )
-    .expect("form archive");
+    let source = "Attribute VB_Name = \"EditorForm\"\r\nPrivate Sub TextBox1_Change()\nActiveDocument.Content.Text = TextBox1.Text\nEnd Sub\nPrivate Sub CommandButton1_Click()\nMe.Hide\nEnd Sub";
+    let mut template = vba_ide::Ide::new();
+    let id = template.add_form(&form.name).expect("native template");
+    template
+        .edit_form(id, vba_ide::forms::DesignEdit::FormProperties { caption: form.caption.clone(), width: form.width, height: form.height })
+        .expect("form dimensions");
+    for control in &form.controls {
+        template.edit_form(id, vba_ide::forms::DesignEdit::Add(control.kind, control.bounds)).expect("add control");
+        template.edit_form(id, vba_ide::forms::DesignEdit::Replace(control.clone())).expect("control design");
+    }
+    template.set_text(source.into()).expect("authored source");
+    let snapshot = template.export_native_form(id).expect("native files");
     let mut session = Session::new(Document::from_text(""));
     let mut state = WordHostState::default();
     let mut host = WordHost::new(&mut session, &mut state).expect("Word host");
     host.set_authorized(true);
     let mut project = WordVbaProject::new(&host).expect("project");
-    project.import_source("EditorForm.tvform", &archive).expect("form import");
+    project.ide_mut().import_source_bundle(snapshot.files(), 1252).expect("native form import");
     let form_id =
         project.ide().modules.iter().find(|module| project.ide().form(module.id).is_some()).map(|module| module.id).expect("imported form module");
     project.ide_mut().run_form(form_id, true, &mut host).expect("show modal form");

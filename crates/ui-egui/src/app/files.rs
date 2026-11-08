@@ -456,12 +456,11 @@ impl WordApp {
         let mut files = std::mem::take(&mut *inbox.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
         #[cfg(feature = "vba")]
         if self.vba_import_pending.is_some()
-            && files.iter().any(|(name, _)| [".bas", ".cls", ".frm", ".frx", ".tvform"].iter().any(|e| name.to_ascii_lowercase().ends_with(e)))
+            && files.iter().any(|(name, _)| [".bas", ".cls", ".frm", ".frx"].iter().any(|e| name.to_ascii_lowercase().ends_with(e)))
         {
             let document = self.vba_import_pending.take();
-            let (selected, rest): (Vec<_>, Vec<_>) = files
-                .into_iter()
-                .partition(|(name, _)| [".bas", ".cls", ".frm", ".frx", ".tvform"].iter().any(|e| name.to_ascii_lowercase().ends_with(e)));
+            let (selected, rest): (Vec<_>, Vec<_>) =
+                files.into_iter().partition(|(name, _)| [".bas", ".cls", ".frm", ".frx"].iter().any(|e| name.to_ascii_lowercase().ends_with(e)));
             files = rest;
             let total = selected.iter().fold(0usize, |n, (_, b)| n.saturating_add(b.len()));
             let result = if document != Some(self.session.document_id()) {

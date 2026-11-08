@@ -1,5 +1,20 @@
 # WordCraft VBA integration profile
 
+M7A.6 native-only files (2026-11-08): the shared custom form codec/APIs and
+`.tvform` file routes/examples are removed under
+[ADR 0099](../../tiny-vba/docs/decisions/0099-native-only-form-workflows.md). New forms use
+inert native templates. Native `.frm`/`.frx` Save/Export and edited macro-enabled
+copy export retain the M7A.5 snapshot/signature/IO contract. Useful legacy-era
+host callback tests now import native pairs; there is no legacy importer or
+converter. Shared revision `d9431ce4992ee9580acfe2fe0f7276de229bedaf`. All eight CI steps
+pass in isolation with one test thread, along with all 29 workflow cases,
+29 native/29 Node 22 WASM package cases, strict optional VBA/UI Clippy, 13 retained
+VBA UI cases plus hidden-editor/canvas/copy-command checks and VBA-enabled web.
+The migrated native import retains its real document callback assertions. The
+host canvas was inspected; 13 shared lockfile packages changed by revision only. M7A.7 acceptance and
+M8.5 fresh Office comparisons remain separate; older codec/support entries below
+are historical and superseded.
+
 M7A.5 persistence (2026-11-08): native `.frm`/`.frx` Save/Export and
 **Export Edited DOCM Copy** (`ui.vbaExportNativePackage`) are implemented. The copy
 compiles idle/reset authored source without execution, encodes edited native form

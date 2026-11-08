@@ -1,5 +1,20 @@
 # WordCraft VBA integration profile
 
+M7A.4 button click focus and input identity (2026-11-08): shared ADR 0096
+implements CommandButton TakeFocusOnClick, native True defaults and False clicks
+that preserve text focus/selection and deferred validation. Normal Tab/explicit
+focus, authorized callbacks and Reset remain intact. Input checks canonical object
+membership after ordinary writes settle and after peer index shifts; smaller
+active-session slices are respected without raising limits. Package regressions
+retain typed False at Stop and normal AutoTab to the button; host canvases retain
+text focus. Shared revision `bcf3dc859095df7a331760d1469b8047c00cacf4`.
+All eight CI steps pass in isolation with one test thread, along with strict
+optional Clippy, 13 VBA UI cases plus hidden-editor/canvas cases, the VBA-enabled
+web build and all 28 native/28 Node 22 WASM package cases. The dark host canvas
+was inspected. Thirteen shared lockfile packages changed by revision only.
+Full M7A.4 remains open; native edited saving/removal and fresh Office traces remain
+M7A.5/.6 and M8.5 NOT_RUN.
+
 M7A.4 hidden TextBox caret viewports (2026-11-08): shared ADR 0095 separates
 scrolling from visible bars. None/room-hidden axes reveal canonical carets while
 fixed authored bounds and translated pointer geometry remain intact. Caller-themed

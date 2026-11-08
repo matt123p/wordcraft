@@ -127,10 +127,10 @@ fn native_text_selection_and_input_preserve_docm_project_bytes() {
             (
                 "Launch",
                 "Module",
-                "Attribute VB_Name = \"Launch\"\nSub Main()\nDim f As New NativeForm,t As MSForms.TextBox\nSet t=f.Entry\nt.Text=\"abcde\"\nt.SelStart=1\nt.SelLength=2\nt.SelText=\"X\"\nf.Show 0\nDebug.Print t.MultiLine\nDebug.Print t.PasswordChar\nDebug.Print t.Text\nDebug.Print t.SelStart\nt.HideSelection=False\nt.SelectionMargin=False\nt.SelStart=1\nt.SelLength=2\nDebug.Print VarType(t.HideSelection),t.HideSelection\nStop\nDebug.Print t.SelStart,t.SelLength\nDebug.Print VarType(t.AutoTab),t.AutoTab\nDebug.Print VarType(t.SelectionMargin),t.SelectionMargin\nDebug.Print VarType(t.ScrollBars),t.ScrollBars\nt.MaxLength=1\nEnd Sub",
+                "Attribute VB_Name = \"Launch\"\nSub Main()\nDim f As New NativeForm,t As MSForms.TextBox\nSet t=f.Entry\nt.Text=\"abcde\"\nt.SelStart=1\nt.SelLength=2\nt.SelText=\"X\"\nf.Show 0\nDebug.Print t.MultiLine\nDebug.Print t.PasswordChar\nDebug.Print t.Text\nDebug.Print t.SelStart\nt.HideSelection=False\nt.SelectionMargin=False\nt.SelStart=1\nt.SelLength=2\nDebug.Print VarType(t.HideSelection),t.HideSelection\nStop\nDebug.Print t.SelStart,t.SelLength\nDebug.Print VarType(t.AutoTab),t.AutoTab\nDebug.Print VarType(t.SelectionMargin),t.SelectionMargin\nDebug.Print VarType(t.ScrollBars),t.ScrollBars\nDebug.Print VarType(f.Apply.TakeFocusOnClick),f.Apply.TakeFocusOnClick\nt.MaxLength=1\nEnd Sub",
             ),
         ]),
-        fixture::text_scroll_companion(0xecf0481b, 42, 3),
+        fixture::text_scroll_button_focus_companion(0xecf0481b, 42, 3, false),
     );
     let mut doc = Document::from_text("unchanged");
     doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
@@ -145,12 +145,16 @@ fn native_text_selection_and_input_preserve_docm_project_bytes() {
     let stopped = *project.ide().form_instances().unwrap().first().unwrap();
     assert_eq!(project.ide().form_instance_field(stopped, Some(12), "HideSelection").unwrap(), wordcraft_vba::Value::Boolean(false));
     assert_eq!(project.ide().form_instance_field(stopped, Some(12), "ScrollBars").unwrap(), wordcraft_vba::Value::Long(3));
+    assert_eq!(project.ide().form_instance_field(stopped, Some(13), "TakeFocusOnClick").unwrap(), wordcraft_vba::Value::Boolean(false));
     assert_eq!(project.ide().form_instance_field(stopped, Some(12), "SelectionMargin").unwrap(), wordcraft_vba::Value::Boolean(false));
     assert_eq!(project.ide().form_instance_field(stopped, Some(12), "VbaSelLength").unwrap(), wordcraft_vba::Value::Long(2));
     project.ide_mut().dispatch(Action::Run, &mut host).unwrap();
     settle_native(&mut project, &mut host).unwrap();
     assert_eq!(project.ide().mode(), Mode::Completed);
-    assert_eq!(project.ide().output(), vec!["initialized", "True", "*", "aXde", "2", "11\tFalse", "1\t2", "11\tTrue", "11\tFalse", "3\t3"]);
+    assert_eq!(
+        project.ide().output(),
+        vec!["initialized", "True", "*", "aXde", "2", "11\tFalse", "1\t2", "11\tTrue", "11\tFalse", "3\t3", "11\tFalse"]
+    );
     let f = *project.ide().form_instances().unwrap().first().unwrap();
     project.prepare_ui_action(&mut host).unwrap();
     project.ide_mut().form_instance_text_edit(f, 12, vba_values::VbaString::from_utf8("z").unwrap(), (1, 0), &mut host).unwrap();

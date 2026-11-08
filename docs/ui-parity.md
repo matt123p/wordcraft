@@ -1,5 +1,19 @@
 # UI parity with Microsoft Word
 
+M7A.4 SelectionMargin (2026-11-08): shared ADR 0093 implements native
+TextBox/ComboBox bit-26 import, ordinary Boolean True defaults and a theme-local
+left selection strip. Actual line selection/drag uses canonical UTF-16/CRLF
+ranges after mouse callbacks finish, including Stop/Continue and changed policy.
+Empty native edit fields render blank with accessible names. Package regressions
+check typed state/ranges at Stop and original VBA project preservation. Canvas
+fixtures compare the default TextBox margin with an editable ComboBox margin off.
+Shared revision `295ae7adde51765e42698d392b5140a7a33c341f`. All eight CI steps pass in isolation with one test
+thread, along with strict optional Clippy, 13 VBA UI cases plus hidden-editor/
+canvas cases, the VBA-enabled web build and all 28 native/28 Node 22 WASM package
+cases. The dark host canvas was inspected. Thirteen shared lockfile packages
+changed by revision only. Full M7A.4 remains open; edited native
+saving and fresh Office observations remain M7A.5 and M8.5 NOT_RUN.
+
 M7A.4 AutoTab (2026-11-08): shared ADR 0092 implements native TextBox/ComboBox
 bit-30 import, ordinary Boolean False defaults and accepted user-edit tab
 traversal through existing validation/focus continuations. Actual edit cause

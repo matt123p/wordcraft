@@ -1,5 +1,19 @@
 # UI parity with Microsoft Word
 
+M7A.4 TextBox ScrollBars (2026-11-08): shared ADR 0094 implements native
+ScrollBars import, ordinary Long None defaults/constants/errors and actual
+bounded text viewports. Measured room, MultiLine and WordWrap determine axes;
+track/drag waits for callbacks and preserves canonical text/ranges. Tagged UI
+offsets reset with execution/control identity, follow caret changes and retain
+scrolled pointer geometry. Native ListBox stored Both is accepted without a
+public member. Package regressions check typed state at Stop and original
+project preservation. Shared revision `05b8862abcf2d3204d26e1226acda372b89b6bb3`. All eight CI
+steps pass in isolation with one test thread, along with strict optional Clippy,
+13 VBA UI cases plus hidden-editor/canvas cases, the VBA-enabled web build and
+all 28 native/28 Node 22 WASM package cases. The corrected dark host canvas was
+inspected. Thirteen shared lockfile packages changed by revision only. Full M7A.4,
+AutoSize/hidden-bar/repeat/platform and container scrolling remain open.
+
 M7A.4 SelectionMargin (2026-11-08): shared ADR 0093 implements native
 TextBox/ComboBox bit-26 import, ordinary Boolean True defaults and a theme-local
 left selection strip. Actual line selection/drag uses canonical UTF-16/CRLF

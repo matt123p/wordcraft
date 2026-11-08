@@ -567,6 +567,13 @@ impl WordApp {
                 self.colors = Some(d);
                 json!({"dialog": "colors"})
             }
+            #[cfg(feature = "vba")]
+            "ui.vbaExportNativePackage" => {
+                if let Err(error) = self.export_native_package_copy() {
+                    return Some(Err(error));
+                }
+                json!({"exportRequested":true})
+            }
             "ui.dialog" => {
                 self.dialog = dialogs::Dialog::open(s("name").unwrap_or(""), self);
                 // New / Modify Table Style can open on a part (`"part": "firstRow"`…).

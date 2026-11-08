@@ -321,9 +321,13 @@ impl WordApp {
         let mut trusted = self.vba_trusted;
         let mut source_requests = Vec::new();
         let previous_mode = project.ide().mode();
+        let mut export_package = false;
         let commands = if open {
             let mut commands = Vec::new();
             egui::Window::new(crate::tl!("Visual Basic")).open(&mut open).default_size([960.0, 680.0]).vscroll(false).show(ctx, |ui| {
+                if ui.button(crate::tl!("Export Edited DOCM Copy")).clicked() {
+                    export_package = true;
+                }
                 ui.checkbox(&mut trusted, crate::tl!("Trust this document's VBA and allow it to edit this document"));
                 if !trusted {
                     ui.label(crate::tl!("VBA document access is blocked. Enable document trust above to allow macros to access this document."));
@@ -382,6 +386,9 @@ impl WordApp {
         for request in source_requests {
             self.route_vba_source_request(request);
         }
+        if export_package && let Err(error) = self.run("ui.vbaExportNativePackage", serde_json::json!({})) {
+            self.status(error);
+        }
     }
 
     #[cfg(feature = "vba")]
@@ -390,6 +397,22 @@ impl WordApp {
         use crate::file_dialogs::{AfterPick, FileDialogRequest};
         let document = self.session.document_id();
         let request = match request {
+            wordcraft_vba::SourceRequest::NativeForm { snapshot, save } => {
+                let project = self.vba_project.as_ref().ok_or("native save project closed").map(|project| project.instance());
+                let Ok(project) = project else {
+                    self.status("Native save project closed");
+                    return;
+                };
+                let Some(file) = snapshot.files().first() else {
+                    return;
+                };
+                let name = file.name.clone();
+                let after = AfterPick::VbaNativeWrite { document, project, snapshot, save };
+                if matches!(self.ask_file(FileDialogRequest::Save { name, dir: None }, after), crate::file_dialogs::Asked::Busy) {
+                    self.status("Finish the open file dialog before saving the native form");
+                }
+                return;
+            }
             wordcraft_vba::SourceRequest::RenameDocument { .. } => {
                 self.status("Word document code names are host-owned; renaming ThisDocument is unsupported.");
                 return;
@@ -427,6 +450,19 @@ impl WordApp {
     #[cfg(target_arch = "wasm32")]
     pub(crate) fn route_vba_source_request(&mut self, request: wordcraft_vba::SourceRequest) {
         match request {
+            wordcraft_vba::SourceRequest::NativeForm { snapshot, .. } => {
+                if let Some(download) = &self.services.download {
+                    for file in snapshot.files() {
+                        if let Err(error) = download(&file.name, &file.bytes) {
+                            self.status(format!("Native download failed: {error}"));
+                            return;
+                        }
+                    }
+                    self.status("Native files were offered for download; source remains modified until committed.");
+                } else {
+                    self.status("Native form downloads are unavailable");
+                }
+            }
             wordcraft_vba::SourceRequest::RenameDocument { .. } => {
                 self.status("Word document code names are host-owned; renaming ThisDocument is unsupported.");
                 return;
@@ -578,5 +614,36 @@ mod native_form_authorization_tests {
         assert!(project.ide().output().is_empty());
         assert!(project.ide().form_instance_visible(instance));
         Ok(())
+    }
+}
+
+#[cfg(feature = "vba")]
+impl WordApp {
+    pub(crate) fn export_native_package_copy(&mut self) -> Result<(), String> {
+        let project = self.vba_project.as_ref().ok_or("VBA project is closed")?;
+        let host = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state)?;
+        let snapshot = project.prepare_native_project_export(&host)?;
+        let bytes =
+            wordcraft_engine::io::encode_edited_vba_package_copy(snapshot.document(), snapshot.original_project(), snapshot.encoded_project())?;
+        project.validate_native_project_export(&host, &snapshot)?;
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let document = self.session.document_id();
+            let project = project.instance();
+            let request = crate::file_dialogs::FileDialogRequest::Save { name: "EditedDocument.docm".into(), dir: None };
+            let after = crate::file_dialogs::AfterPick::VbaPackageWrite { document, project, snapshot: Box::new(snapshot), bytes };
+            match self.ask_file(request, after) {
+                crate::file_dialogs::Asked::Busy => Err("Finish the open file dialog before exporting the native document".into()),
+                crate::file_dialogs::Asked::Done(result) => result.map(|_| ()),
+                crate::file_dialogs::Asked::Pending => Ok(()),
+            }
+        }
+        #[cfg(target_arch = "wasm32")]
+        {
+            let download = self.services.download.as_ref().ok_or("Document downloads are unavailable")?;
+            download("EditedDocument.docm", &bytes)?;
+            self.status("Edited DOCM copy offered for download");
+            Ok(())
+        }
     }
 }

@@ -488,6 +488,7 @@ impl Host for WordHost<'_> {
 
 /// Shared tiny-vba project configured with WordCraft's explicit roots and API catalogue.
 pub struct WordVbaProject {
+    document: u64,
     instance: u64,
     ide: Ide,
     batch_active: bool,
@@ -590,6 +591,7 @@ impl WordVbaProject {
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |value| value.checked_add(1))
             .map_err(|_| "Word VBA project identity exhausted")?;
         Ok(Self {
+            document: host.session.document_id(),
             instance,
             ide,
             batch_active: false,
@@ -1131,5 +1133,48 @@ mod runtime_type_name_tests {
         }
         objects.closed.store(true, Ordering::Relaxed);
         assert_eq!(objects.runtime_type_name(reference).unwrap_err().number, 91);
+    }
+}
+
+/// Revision/owner-bound snapshot for explicit edited DOCM export.
+#[derive(Clone)]
+pub struct NativeDocumentSave {
+    document: u64,
+    instance: u64,
+    original: wordcraft_doc::Document,
+    project: vba_ide::NativeProjectSave,
+}
+impl NativeDocumentSave {
+    pub fn document(&self) -> &wordcraft_doc::Document {
+        &self.original
+    }
+    pub fn original_project(&self) -> &[u8] {
+        self.original.passthrough.get("word/vbaProject.bin").map_or(&[], |bytes| bytes.as_slice())
+    }
+    pub fn encoded_project(&self) -> &[u8] {
+        self.project.bytes()
+    }
+}
+impl WordVbaProject {
+    pub fn prepare_native_project_export(&self, host: &WordHost<'_>) -> Result<NativeDocumentSave, String> {
+        if host.session.document_id() != self.document {
+            return Err("native save document identity changed".into());
+        }
+        let original = &host.session.doc;
+        let bytes = original.passthrough.get("word/vbaProject.bin").ok_or("document has no native project")?;
+        let project = self.ide.export_native_project(bytes).map_err(|error| error.to_string())?;
+        Ok(NativeDocumentSave { document: self.document, instance: self.instance, original: original.clone(), project })
+    }
+    pub fn validate_native_project_export(&self, host: &WordHost<'_>, save: &NativeDocumentSave) -> Result<(), String> {
+        if host.session.document_id() != save.document || self.instance != save.instance || host.session.doc != save.original {
+            return Err("document changed during native project export".into());
+        }
+        let bytes = host.session.doc.passthrough.get("word/vbaProject.bin").ok_or("native project removed")?;
+        self.ide.validate_native_project_save(&save.project, bytes).map_err(|error| error.to_string())
+    }
+    /// Acknowledges the successfully committed edited package copy only.
+    pub fn acknowledge_native_project_export(&mut self, host: &WordHost<'_>, save: &NativeDocumentSave) -> Result<(), String> {
+        self.validate_native_project_export(host, save)?;
+        self.ide.acknowledge_native_project_save(&save.project).map_err(|error| error.to_string())
     }
 }

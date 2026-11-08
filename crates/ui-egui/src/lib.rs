@@ -692,3 +692,6 @@ pub(crate) fn rust_sources(dir: &std::path::Path) -> Vec<std::path::PathBuf> {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+mod vba_native_files;

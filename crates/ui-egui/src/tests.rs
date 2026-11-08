@@ -7878,3 +7878,32 @@ fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture
     }
     Ok(())
 }
+
+#[cfg(feature = "vba")]
+#[path = "../../vba/tests/support/mod.rs"]
+mod native_package_fixture;
+#[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+#[test]
+fn native_package_copy_ui_writes_edited_source_and_preserves_original_dirty_state() -> Result<(), Box<dyn std::error::Error>> {
+    let original = native_form_fixture::add_designer(native_package_fixture::project(&[("NativeForm", "BaseClass", native_form_fixture::SOURCE)]));
+    let mut a = app();
+    a.session.doc.passthrough.insert("word/vbaProject.bin".into(), std::sync::Arc::new(original.clone()));
+    let project = {
+        let host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state)?;
+        wordcraft_vba::WordVbaProject::new(&host)?
+    };
+    a.vba_project = Some(project);
+    a.vba_document = a.session.document_id();
+    let source = native_form_fixture::SOURCE.replace("initialized", "UI saved");
+    a.vba_project.as_mut().ok_or("project")?.ide_mut().set_text(source.clone())?;
+    let path = std::env::temp_dir().join(format!("word-native-copy-{}.docm", std::process::id()));
+    let selected = path.to_string_lossy().into_owned();
+    a.services.pick_save = Some(Box::new(move |_| Some(selected.clone())));
+    a.run("ui.vbaExportNativePackage", json!({}))?;
+    let back = wordcraft_engine::io::open_bytes("Edited.docm", &std::fs::read(&path)?)?;
+    assert!(back.passthrough.get("word/vbaProject.bin").is_some_and(|b| b.as_slice() != original.as_slice()));
+    assert!(a.vba_project.as_ref().ok_or("project")?.ide().active_module().ok_or("source")?.dirty());
+    assert_eq!(a.session.doc.passthrough.get("word/vbaProject.bin").map(|b| b.as_slice()), Some(original.as_slice()));
+    std::fs::remove_file(path)?;
+    Ok(())
+}

@@ -790,3 +790,14 @@ pub fn save_path_with(path: &std::path::Path, _doc: &Document, _password: Option
 pub fn decode_text(b: &[u8]) -> String {
     wordcraft_formats::txt::decode(b)
 }
+
+/// Encode an explicit edited DOCM copy; no source execution, document mutation or IO.
+pub fn encode_edited_vba_package_copy(doc: &Document, expected: &[u8], edited: &[u8]) -> Result<Vec<u8>, String> {
+    let candidate = wordcraft_docx::prepare_edited_vba_package(doc, expected, edited).map_err(|error| error.to_string())?;
+    let bytes = wordcraft_docx::write_as(&candidate, wordcraft_docx::Flavor::MacroDocument).map_err(|error| error.to_string())?;
+    let back = wordcraft_docx::read(&bytes).map_err(|error| error.to_string())?;
+    if back.passthrough.get("word/vbaProject.bin").map(|b| b.as_slice()) != Some(edited) {
+        return Err("native package reopen differs from encoded project".into());
+    }
+    Ok(bytes)
+}

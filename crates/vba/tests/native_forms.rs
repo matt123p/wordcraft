@@ -1527,3 +1527,51 @@ fn native_appearance_font_aliases_alignment_and_wrapping_preserve_trusted_contin
     assert!(project.prepare_ui_action(&mut host).is_err());
     Ok(())
 }
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn edited_docm_native_project_copy_reopens_runs_and_drops_signatures() {
+    let original = fixture::add_designer(support::project(&[("NativeForm", "BaseClass", fixture::SOURCE)]));
+    let mut doc = Document::from_text("unchanged");
+    doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(original.clone()));
+    doc.passthrough.insert("word/signature.bin".into(), Arc::new(b"signature sentinel".to_vec()));
+    doc.passthrough.insert("wordcraft:vbaProject.related".into(),Arc::new(b"http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignatureAgile\tword/signature.bin\tapplication/vnd.ms-office.vbaProjectSignatureAgile\n".to_vec()));
+    let mut session = Session::new(doc);
+    let mut state = WordHostState::default();
+    let host = WordHost::new(&mut session, &mut state).unwrap();
+    let mut project = WordVbaProject::new(&host).unwrap();
+    let id = project.ide().active_module().unwrap().id;
+    let mut c = project.ide().form(id).unwrap().form().controls.get(1).unwrap().clone();
+    c.text = "saved embedded".into();
+    project.ide_mut().edit_form(id, vba_ide::forms::DesignEdit::Replace(c)).unwrap();
+    project.ide_mut().set_text(fixture::SOURCE.replace("initialized", "saved initialize")).unwrap();
+    let snapshot = project.prepare_native_project_export(&host).unwrap();
+    assert!(project.ide().output().is_empty());
+    let candidate = wordcraft_docx::prepare_edited_vba_package(snapshot.document(), snapshot.original_project(), snapshot.encoded_project()).unwrap();
+    project.validate_native_project_export(&host, &snapshot).unwrap();
+    let bytes = write_as(&candidate, Flavor::MacroDocument).unwrap();
+    let back = read(&bytes).unwrap();
+    assert!(!back.passthrough.contains_key("word/signature.bin"));
+    let mut reopened = Session::new(back);
+    let mut new_state = WordHostState::default();
+    let mut new_host = WordHost::new(&mut reopened, &mut new_state).unwrap();
+    let mut new_project = WordVbaProject::new(&new_host).unwrap();
+    let new_id = new_project.ide().active_module().unwrap().id;
+    assert!(new_project.ide().output().is_empty());
+    new_host.set_authorized(true);
+    new_project.ide_mut().run_form(new_id, true, &mut new_host).unwrap();
+    settle_native(&mut new_project, &mut new_host).unwrap();
+    assert_eq!(new_project.ide().output(), vec!["saved initialize"]);
+    new_project.ide_mut().form_event(new_id, Some(13), None, &mut new_host).unwrap();
+    for _ in 0..500 {
+        new_project.ide_mut().tick(&mut new_host).unwrap();
+        if new_project.ide().mode() == Mode::Completed {
+            break;
+        }
+    }
+    assert_eq!(new_project.ide().output(), vec!["saved initialize", "saved embedded"]);
+    project.acknowledge_native_project_export(&host, &snapshot).unwrap();
+    assert!(!project.ide().active_module().unwrap().dirty());
+    project.ide_mut().set_text(format!("{}\n' later", fixture::SOURCE)).unwrap();
+    assert!(project.validate_native_project_export(&host, &snapshot).is_err());
+}

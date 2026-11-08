@@ -9,10 +9,10 @@
 mod host;
 mod main_story;
 
-pub use host::{ApplicationEvent, WordHost, WordHostState, WordVbaProject};
+pub use host::{ApplicationEvent, NativeDocumentSave, WordHost, WordHostState, WordVbaProject};
 pub use main_story::{MainStoryMap, PositionAffinity, PositionError};
 pub use vba_ide::{Action, FormMouseEvent, FormMouseInput, HostRequest as SourceRequest, Mode, SourceId};
-pub use vba_ide::{NativeFormResource, ProjectImportLimits, native_form_companion_name};
+pub use vba_ide::{NativeFormResource, NativeFormSave, ProjectImportLimits, native_form_companion_name};
 pub use vba_values::Value;
 
 /// Bounded source/form transfer before decoding or modifying an in-memory project.

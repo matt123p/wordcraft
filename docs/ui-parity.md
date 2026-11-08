@@ -1,5 +1,27 @@
 # UI parity with Microsoft Word
 
+M7A.5 persistence (2026-11-08): native `.frm`/`.frx` Save/Export and
+**Export Edited DOCM Copy** (`ui.vbaExportNativePackage`) are implemented. The copy
+compiles idle/reset authored source without execution, encodes edited native form
+resources, removes invalidated VBA signatures and reopens the macro-enabled output
+to check exact project bytes. File selection revalidates project/document/source/
+design identity; native output commits atomically and refuses the current document
+path. Copy export/download leaves the original editor modified and preserves its
+original project bytes. Ordinary document Save retains those original VBA bytes;
+open the edited copy to use the persisted changes. Native `.frm` Save acknowledges
+only successful current-snapshot IO; browser download requests never do.
+Shared revision `8800fcb07e628d4719a5c5459969503ba7e70f7c`.
+See the [supported workflow and acceptance limits](../../tiny-vba/docs/m7a5-acceptance.md).
+All eight CI steps pass in isolation with one test thread, along with strict
+optional VBA/UI Clippy, 13 retained VBA UI cases, hidden-editor/canvas and new
+copy-command cases, the VBA-enabled web build and 29 native/29 Node 22 WASM package
+cases. The legacy/agile/v3 signature-removal regression and incomplete manifest
+refusals pass. Thirteen shared lockfile packages changed by revision only. M7A.4 is complete for the common profile under
+ADR 0097; uncommon extensions belong to P9, `.tvform` removal to M7A.6 and final
+integration to M7A.7. Fresh Office observations remain M8.5 NOT_RUN. Earlier
+incremental entries below retain historical status and are superseded by this
+current scope and persistence contract.
+
 M7A.4 button click focus and input identity (2026-11-08): shared ADR 0096
 implements CommandButton TakeFocusOnClick, native True defaults and False clicks
 that preserve text focus/selection and deferred validation. Normal Tab/explicit

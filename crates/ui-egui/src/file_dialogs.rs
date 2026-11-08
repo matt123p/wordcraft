@@ -83,6 +83,10 @@ pub(crate) enum AfterPick {
     #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
     VbaImport { document: u64 },
     #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+    VbaPackageWrite { document: u64, project: u64, snapshot: Box<wordcraft_vba::NativeDocumentSave>, bytes: Vec<u8> },
+    #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+    VbaNativeWrite { document: u64, project: u64, snapshot: wordcraft_vba::NativeFormSave, save: bool },
+    #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
     VbaWrite { document: u64, name: String, text: String, source: Option<(wordcraft_vba::SourceId, u64)> },
 }
 
@@ -319,6 +323,45 @@ impl WordApp {
                 self.vba_project.as_mut().ok_or("VBA project is closed")?.import_source_bundle(&files, 1252)?;
                 self.status(format!("Imported VBA source {name}"));
                 Ok(json!({"imported": name}))
+            }
+            #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+            AfterPick::VbaPackageWrite { document, project, snapshot, bytes } => {
+                let Some(path) = picked else {
+                    return Ok(json!({"cancelled":true}));
+                };
+                if document != self.session.document_id() {
+                    return Err("Native copy document changed".into());
+                }
+                let target = std::path::Path::new(&path);
+                if !target.extension().is_some_and(|s| s.eq_ignore_ascii_case("docm")) {
+                    return Err("Choose a .docm copy".into());
+                }
+                if self.session.path.as_ref().is_some_and(|original| {
+                    original == target || std::fs::canonicalize(target).ok().zip(std::fs::canonicalize(original).ok()).is_some_and(|(a, b)| a == b)
+                }) {
+                    return Err("Choose a different path for the edited document copy".into());
+                }
+                let current = self.vba_project.as_ref().filter(|p| p.instance() == project).ok_or("Native copy project changed")?;
+                let host = wordcraft_vba::WordHost::new(&mut self.session, &mut self.vba_host_state)?;
+                current.validate_native_project_export(&host, &snapshot)?;
+                crate::vba_native_files::write_package(target, &bytes).map_err(|error| error.to_string())?;
+                self.status("Edited DOCM copy exported");
+                Ok(json!({"exported":true}))
+            }
+            #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
+            AfterPick::VbaNativeWrite { document, project, snapshot, save } => {
+                let Some(path) = picked else { return Ok(json!({"cancelled":true})) };
+                if document != self.session.document_id() {
+                    return Err("native save document is no longer active".into());
+                }
+                let current = self.vba_project.as_mut().filter(|current| current.instance() == project).ok_or("native save project changed")?;
+                current.ide().validate_native_form_save(&snapshot).map_err(|error| error.to_string())?;
+                crate::vba_native_files::write_native_form(std::path::Path::new(&path), &snapshot).map_err(|error| error.to_string())?;
+                if save {
+                    current.ide_mut().acknowledge_native_form_save(&snapshot).map_err(|error| error.to_string())?;
+                }
+                self.status("Native form files saved");
+                Ok(json!({"saved":true}))
             }
             #[cfg(all(feature = "vba", not(target_arch = "wasm32")))]
             AfterPick::VbaWrite { document, name, text, source } => {

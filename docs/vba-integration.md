@@ -1,5 +1,17 @@
 # WordCraft VBA integration profile
 
+M7A.4 hidden TextBox caret viewports (2026-11-08): shared ADR 0095 separates
+scrolling from visible bars. None/room-hidden axes reveal canonical carets while
+fixed authored bounds and translated pointer geometry remain intact. Caller-themed
+accessible bars keep the existing authorized callback/default path. The host
+canvas fixture now shows long text scrolled to its final row with ScrollBars=None.
+No API, format, host authority or budget change. Shared revision `25a35a403e862bb8510bfe7117d95f379aeea1fc`. All eight CI steps
+pass in isolation with one test thread, along with strict optional Clippy, 13 VBA
+UI cases plus hidden-editor/canvas cases, the VBA-enabled web build and all 28
+native/28 Node 22 WASM package cases. The dark host canvas was inspected.
+Thirteen shared lockfile packages changed by revision only. Full M7A.4, AutoSize, repeat/wheel/platform and geometry/font-change
+edge cases remain open; fresh Office comparisons remain M8.5 NOT_RUN.
+
 M7A.4 TextBox ScrollBars (2026-11-08): shared ADR 0094 implements native
 ScrollBars import, ordinary Long None defaults/constants/errors and actual
 bounded text viewports. Measured room, MultiLine and WordWrap determine axes;

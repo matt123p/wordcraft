@@ -1,5 +1,19 @@
 # WordCraft VBA integration profile
 
+M7A.7/common M7A acceptance (2026-11-08): [ADR 0100 and the acceptance matrix](../../tiny-vba/docs/m7a-acceptance.md)
+cover the agreed common native forms, worksheet scope, native file/edited package
+copies and custom-format removal. The strengthened edited-copy case now reopens
+source/resources, stops before real host mutation, continues once, undoes the
+change and resets all instances. Four malformed native resource variants refuse
+without document/raw-project changes. 30 native/30 Node 22 WASM package cases, 29 workflow cases, 13 VBA UI plus
+canvas/hidden-editor/copy cases, strict optional Clippy, VBA web and all eight CI
+steps in isolation with one test thread pass. The host canvas was inspected. Shared runtime remains
+`d9431ce4992ee9580acfe2fe0f7276de229bedaf`; no adapter, dependency or budget changed.
+Ordinary document Save still preserves original VBA bytes; edited persistence
+uses explicit copies. M7A is COMPLETE for the finite common profile. Next is M8;
+uncommon/exhaustive P9 stays deferred and fresh Office comparison is M8.5 NOT_RUN.
+Older incremental scope/status entries below are historical and superseded.
+
 M7A.6 native-only files (2026-11-08): the shared custom form codec/APIs and
 `.tvform` file routes/examples are removed under
 [ADR 0099](../../tiny-vba/docs/decisions/0099-native-only-form-workflows.md). New forms use

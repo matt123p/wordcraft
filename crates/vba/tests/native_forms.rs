@@ -1544,7 +1544,10 @@ fn edited_docm_native_project_copy_reopens_runs_and_drops_signatures() {
     let mut c = project.ide().form(id).unwrap().form().controls.get(1).unwrap().clone();
     c.text = "saved embedded".into();
     project.ide_mut().edit_form(id, vba_ide::forms::DesignEdit::Replace(c)).unwrap();
-    project.ide_mut().set_text(fixture::SOURCE.replace("initialized", "saved initialize")).unwrap();
+    let edited_source = fixture::SOURCE
+        .replace("initialized", "saved initialize")
+        .replace("Debug.Print Entry.Text", "Stop\r\nActiveDocument.Content.Text = Entry.Text\r\nDebug.Print Entry.Text");
+    project.ide_mut().set_text(edited_source).unwrap();
     let snapshot = project.prepare_native_project_export(&host).unwrap();
     assert!(project.ide().output().is_empty());
     let candidate = wordcraft_docx::prepare_edited_vba_package(snapshot.document(), snapshot.original_project(), snapshot.encoded_project()).unwrap();
@@ -1562,7 +1565,12 @@ fn edited_docm_native_project_copy_reopens_runs_and_drops_signatures() {
     new_project.ide_mut().run_form(new_id, true, &mut new_host).unwrap();
     settle_native(&mut new_project, &mut new_host).unwrap();
     assert_eq!(new_project.ide().output(), vec!["saved initialize"]);
+    new_project.prepare_ui_action(&mut new_host).unwrap();
     new_project.ide_mut().form_event(new_id, Some(13), None, &mut new_host).unwrap();
+    settle_native(&mut new_project, &mut new_host).unwrap();
+    assert_eq!(new_project.ide().mode(), Mode::Break);
+    assert_eq!(new_host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    new_project.ide_mut().dispatch(Action::Run, &mut new_host).unwrap();
     for _ in 0..500 {
         new_project.ide_mut().tick(&mut new_host).unwrap();
         if new_project.ide().mode() == Mode::Completed {
@@ -1570,8 +1578,49 @@ fn edited_docm_native_project_copy_reopens_runs_and_drops_signatures() {
         }
     }
     assert_eq!(new_project.ide().output(), vec!["saved initialize", "saved embedded"]);
+    assert_eq!(new_host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "saved embedded");
+    assert_eq!(new_host.session_mut().undo_depth(), 1);
+    assert!(new_host.session_mut().undo());
+    assert_eq!(new_host.session_mut().doc.plain_text(wordcraft_doc::StoryRef::Body), "unchanged");
+    new_project.ide_mut().dispatch(Action::Reset, &mut new_host).unwrap();
+    assert!(new_project.ide().form_instances().unwrap().is_empty());
     project.acknowledge_native_project_export(&host, &snapshot).unwrap();
     assert!(!project.ide().active_module().unwrap().dirty());
     project.ide_mut().set_text(format!("{}\n' later", fixture::SOURCE)).unwrap();
     assert!(project.validate_native_project_export(&host, &snapshot).is_err());
+}
+
+#[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
+#[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
+fn malformed_native_package_resources_refuse_without_document_mutation() {
+    use std::io::{Cursor, Read, Write};
+    for corruption in 0..4 {
+        let original = fixture::add_designer(support::project(&[("NativeForm", "BaseClass", fixture::SOURCE)]));
+        let mut file = cfb::CompoundFile::open(Cursor::new(original)).unwrap();
+        let path = if corruption == 1 { "/NativeForm/o" } else { "/NativeForm/f" };
+        let mut bytes = Vec::new();
+        file.open_stream(path).unwrap().read_to_end(&mut bytes).unwrap();
+        if corruption < 2 {
+            bytes.truncate(1);
+        } else {
+            let site = bytes.windows(4).position(|w| w == [0xf5, 1, 0, 0]).unwrap();
+            if corruption == 2 {
+                bytes[site + 22..site + 24].copy_from_slice(&[0xff, 0x7f]);
+            } else {
+                bytes[site + 4..site + 8].copy_from_slice(&i32::MAX.to_le_bytes());
+            }
+        }
+        file.create_stream(path).unwrap().write_all(&bytes).unwrap();
+        let malformed = file.into_inner().into_inner();
+        let mut doc = Document::from_text("unchanged");
+        doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(malformed.clone()));
+        let mut session = Session::new(read(&write_as(&doc, Flavor::MacroDocument).unwrap()).unwrap());
+        let before = session.doc.clone();
+        let mut state = WordHostState::default();
+        let host = WordHost::new(&mut session, &mut state).unwrap();
+        assert!(WordVbaProject::new(&host).is_err(), "corruption {corruption}");
+        assert!(session.doc == before);
+        assert_eq!(session.undo_depth(), 0);
+        assert_eq!(session.doc.passthrough.get("word/vbaProject.bin").map(|v| v.as_slice()), Some(malformed.as_slice()));
+    }
 }

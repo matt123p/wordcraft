@@ -1,12 +1,6 @@
 # WordCraft architecture
 
-VBA package contract update (2026-11-04): source decoding stays in the existing
-pinned tiny-vba `vba-project` crate; document attachment, trust and OOXML preservation
-stay in this fork. There is no encoder or reverse dependency. The
-[M7 writeback/signature decision](../../tiny-vba/docs/decisions/0037-m7-package-preservation-and-writeback.md)
-separates original binary retention from source exports and future edited writeback.
-
-> **Last reviewed:** 2026-10-30 · **Last updated:** 2026-11-04 · **Change:** minor (start the optional WordCraft VBA host bridge; main-story position mapping is bounded and isolated in L5; previously major: crate and layer inventory, source counts, proofing languages and module boundaries re-measured from this checkout; previously minor: `proof` is per language: English and Polish; previously major: first committed version; `plan/architecture.md` is local-only) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
+> **Last reviewed:** 2026-10-28 · **Last updated:** 2026-10-28 · **Change:** major (crate and layer inventory, source counts, proofing languages and module boundaries re-measured from this checkout; previously minor: `proof` is per language: English and Polish; previously major: first committed version; `plan/architecture.md` is local-only) · **Target:** Microsoft Word (Microsoft 365) for Mac 16.113.4
 
 How WordCraft is built today. The longer design notes in
 `plan/architecture.md` are gitignored and local to the original author's machine; this file is the
@@ -19,8 +13,7 @@ On 2026-10-28, `find crates apps xtask -type f -name '*.rs' -print0 | xargs -0 w
 members with `crates/*`, `apps/*` and `xtask`; `cargo xtask layers` verified 20 workspace packages
 (16 crates, 3 apps and `xtask`) and no layering violations. The layer and line counts below are
 from that command and per-directory `find ... -name '*.rs' ... | wc -l` counts on that date. Each
-crate name links to its source tree. Layering is enforced by `cargo xtask layers`: a crate may only
-depend on crates in lower layers, and nothing below L6 depends on egui, eframe, winit or rfd.
+crate name links to its source tree.
 
 | Layer | Crate | Lines | Job |
 |---|---|---|---|
@@ -38,7 +31,6 @@ depend on crates in lower layers, and nothing below L6 depends on egui, eframe, 
 | L3 | [`render`](../crates/render/src) | 4,499 | vello_cpu rasterizer: pages and thumbnails from the display list; PNG/JPEG |
 | L4 | [`engine`](../crates/engine/src) | 72,851 | `Session` and editing state; command registry in `cmd/`; file dispatch in `io`; catalog, keymap, recovery, ribbon model, speech and view state |
 | L5 | [`mcp`](../crates/mcp/src) | 1,822 | MCP server exposing commands as tools; headless or bridged to the running app |
-| L5 | [`vba`](../crates/vba/src) | 1,011 | Optional VBA host bridge behind the `vba` feature: Word document roots, story character positions and bounded mutation routing; tiny-vba remains a separate interpreter dependency |
 | L5 | [`zotero`](../crates/zotero/src) | 2,372 | Zotero word-processor integration protocol answered against a `Session` |
 | L6 | [`ui-egui`](../crates/ui-egui/src) | 81,759 | Front end: ribbon, keytips, mini-toolbar, Backstage, canvas, rulers, panes, dialogs, i18n, themes, control channel and headless `ui_shot` example |
 | apps | [`wordcraft`](../apps/wordcraft/src) | 3,740 | Desktop app (eframe + wgpu; logging, window geometry and file associations) |
@@ -77,37 +69,6 @@ depend on crates in lower layers, and nothing below L6 depends on egui, eframe, 
 
 | Date | Change | Summary |
 |---|---|---|
-| 2026-10-30 | minor | Started the optional WordCraft VBA host bridge (`crates/vba`, behind the `vba` feature): Word document roots, story character positions and bounded main-story mutation routing, isolated in L5 |
 | 2026-10-28 | major | Recounted workspace crates, layers and Rust source lines; refreshed proofing languages and documented current engine/layout module boundaries and source links |
 | 2026-10-10 | minor | `proof`: proofing languages (English, Polish), affix engine, Polish patterns; layout and engine route each run by its language |
 | 2026-10-10 | major | First committed architecture doc, from the crates' sources and `AGENTS.md` |
-
-M6 host-event delivery 2026-11-01: wordcraft-vba owns trusted Application event queues and ordered ByRef/lifecycle delivery through shared live WithEvents handles; UI owns source-save tickets bound to document/project instance/revision. Shared code owns metadata projection. See vba-integration.md.
-
-M7 revision history — 2026-11-04: added the authored unchanged-document/package
-profile, original-project/source-export distinction and explicit signature policy.
-See the linked shared M7 acceptance record for exact tests and limitations.
-
-M7A.1/M7A.2 update — 2026-11-04: selected native UserForm export/embedded
-import now attaches inertly to the shared designer/runtime/debugger. Source and
-original resources remain distinct, explicit authorization precedes execution,
-and native edited saving/broader semantics/custom-format removal remain open.
-
-M7A.4 increment — 2026-11-04: the shared native form runtime is pinned at
-`d2de831892e5d2b17557de6b7abb00a83fdfc292`. Form instance commands are classified
-centrally by the shared UI API and retain the existing host execution-consent
-checks. Canonical controls/lifetimes stay in tiny-vba; document state, package
-retention and authorization stay in this fork. Full M7A.4 remains open.
-
-## M7A.5 explicit native persistence (2026-11-08)
-
-The optional VBA bridge prepares a compile-checked shared native-project snapshot
-bound to document/project identity and exact imported originals. The format crate
-owns signature removal and project replacement on a document clone. Engine IO
-writes/reopens a macro-enabled copy and compares exact project bytes. The UI owns
-file selection, final snapshot validation and atomic commit; browser callbacks
-only request downloads. This uses existing dependency edges. Copy export does
-not mutate the original document or clear its editor's dirty state; ordinary
-Save retains its original project. Native form Save/Export separately publishes
-a complete immutable `.frx` before replacing `.frm`; failed/stale saves do not
-acknowledge modified state. See the shared ADR 0098 and M7A.5 acceptance record.

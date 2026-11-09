@@ -8642,6 +8642,9 @@ fn native_userform_windows_and_callbacks_remain_active_with_vbe_hidden() -> Resu
 fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture() -> Result<(), Box<dyn std::error::Error>> {
     for (reset, prefix) in [(false, false), (true, false), (false, true), (true, true)] {
         let mut a = WordApp::new(Session::new(wordcraft_doc::Document::from_text("original document")), Services::default());
+        // This replay case needs a stable canvas: even a subpixel scrollbar animation
+        // correctly cancels retained input when its authorized area changes.
+        a.ui.animations = theme::Animations::Off;
         let project = {
             let mut host = wordcraft_vba::WordHost::new(&mut a.session, &mut a.vba_host_state)?;
             host.set_authorized(true);
@@ -8698,6 +8701,7 @@ fn native_document_click_waits_for_deactivate_and_reset_discards_the_raw_gesture
         for _ in 0..40 {
             step(&mut a, vec![]);
         }
+        assert!(a.vba_editor.document_input_pending(), "the stable canvas retains the click while the callback is paused");
         assert_eq!(a.vba_project.as_ref().ok_or("project")?.ide().mode(), wordcraft_vba::Mode::Break);
         assert_eq!(a.session.sel, before);
         assert_eq!(a.session.doc.plain_text(wordcraft_doc::StoryRef::Body), text);

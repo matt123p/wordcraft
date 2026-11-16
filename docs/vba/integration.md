@@ -1,6 +1,6 @@
 # WordCraft VBA integration profile
 
-M7A.7/common M7A acceptance (2026-11-08): [ADR 0100 and the acceptance matrix](../../../tiny-vba/docs/m7a-acceptance.md)
+M7A.7/common M7A acceptance (2026-11-08): [ADR 0100 and the acceptance matrix](https://github.com/matt123p/tiny-vba/blob/ac10617b5ee9d9112e5accffd07d6f6d1d9fb76b/docs/m7a-acceptance.md)
 cover the agreed common native forms, worksheet scope, native file/edited package
 copies and custom-format removal. The strengthened edited-copy case now reopens
 source/resources, stops before real host mutation, continues once, undoes the
@@ -16,7 +16,7 @@ Older incremental scope/status entries below are historical and superseded.
 
 M7A.6 native-only files (2026-11-08): the shared custom form codec/APIs and
 `.tvform` file routes/examples are removed under
-[ADR 0099](../../../tiny-vba/docs/decisions/0099-native-only-form-workflows.md). New forms use
+[ADR 0099](https://github.com/matt123p/tiny-vba/blob/ac10617b5ee9d9112e5accffd07d6f6d1d9fb76b/docs/decisions/0099-native-only-form-workflows.md). New forms use
 inert native templates. Native `.frm`/`.frx` Save/Export and edited macro-enabled
 copy export retain the M7A.5 snapshot/signature/IO contract. Useful legacy-era
 host callback tests now import native pairs; there is no legacy importer or
@@ -40,7 +40,7 @@ original project bytes. Ordinary document Save retains those original VBA bytes;
 open the edited copy to use the persisted changes. Native `.frm` Save acknowledges
 only successful current-snapshot IO; browser download requests never do.
 Shared revision `8800fcb07e628d4719a5c5459969503ba7e70f7c`.
-See the [supported workflow and acceptance limits](../../../tiny-vba/docs/m7a5-acceptance.md).
+See the [supported workflow and acceptance limits](https://github.com/matt123p/tiny-vba/blob/ac10617b5ee9d9112e5accffd07d6f6d1d9fb76b/docs/m7a5-acceptance.md).
 All eight CI steps pass in isolation with one test thread, along with strict
 optional VBA/UI Clippy, 13 retained VBA UI cases, hidden-editor/canvas and new
 copy-command cases, the VBA-enabled web build and 29 native/29 Node 22 WASM package
@@ -311,7 +311,8 @@ external application focus and passive hover do not emit lifecycle callbacks.
 The new package regression checks a stopped Deactivate handler before a one-shot
 host edit and preserves original VBA resources. Automatic document-canvas raw
 input buffering/replay remains unimplemented; L01/L02 and full M7A.4 stay open.
-Pinned product and final validation are recorded in ROADMAP.md.
+The pinned runtime and historical validation receipts are recorded in this
+VBA documentation folder.
 
 Updated 2026-11-05: M7 adds inert packaged-source attachment when creating the
 shared editor project. Standard/class modules and the selected `ThisDocument`
@@ -321,9 +322,9 @@ original package data remains intact. Every new invocation requires explicit
 host authorization before VBA entry. No automatic Open/New handler execution
 is introduced. Original project/direct signature/data parts survive `.docm`
 save/reopen; source export remains separate from unsupported edited binary
-writeback. Package-wide OPC signatures are dropped/logged on import into the
+writeback. Package-wide OPC signatures are dropped on import into the
 rewrite model. Signature bytes do not establish validity or execution trust.
-[M7 acceptance](../../../tiny-vba/docs/m7-acceptance.md) records the declared profile,
+[M7 acceptance](https://github.com/matt123p/tiny-vba/blob/ac10617b5ee9d9112e5accffd07d6f6d1d9fb76b/docs/m7-acceptance.md) records the declared profile,
 source identity, event lifecycle, exact effects and native/WASM evidence.
 
 Updated 2026-11-01. This is the WordCraft side of tiny-vba's M6 host-integration
@@ -532,8 +533,8 @@ package tests prove explicit authorization, modal handler return, Reset and orig
 embedded project retention on save/reopen. Native edited source/resource saving
 remains unsupported and cannot fall back to the custom archive. Full lifecycle/
 control parity, edited persistence and legacy-format removal remain later M7A tasks.
-See [native contracts](../../../tiny-vba/docs/m7a-control-contracts.md) and
-[acceptance](../../../tiny-vba/docs/m7a-import-acceptance.md). No fresh Office
+See [native contracts](https://github.com/matt123p/tiny-vba/blob/ac10617b5ee9d9112e5accffd07d6f6d1d9fb76b/docs/m7a-control-contracts.md) and
+[acceptance](https://github.com/matt123p/tiny-vba/blob/ac10617b5ee9d9112e5accffd07d6f6d1d9fb76b/docs/m7a-import-acceptance.md). No fresh Office
 observation or signature validity is claimed.
 
 ## M7A.4 shared runtime increment (2026-11-04)
@@ -551,7 +552,7 @@ Instance input and form launch use the existing document execution-authorization
 policy before dispatch, including handlers that only execute pure VBA. Editing,
 compiling and exporting source remain available without granting execution trust.
 
-See [the shared runtime record](../../../tiny-vba/docs/m7a4-native-runtime.md) and ADRs
+See [the shared runtime record](https://github.com/matt123p/tiny-vba/blob/ac10617b5ee9d9112e5accffd07d6f6d1d9fb76b/docs/m7a4-native-runtime.md) and ADRs
 0043/0044 for scope/evidence and remaining requirements. M7A.4 remains in progress;
 list/container/scroll/image/binding/platform packets, full focus/event/type parity,
 native edited persistence and format removal are not implied. Fresh Office

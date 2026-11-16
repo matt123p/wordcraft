@@ -5,7 +5,9 @@ use wordcraft_doc::Document;
 /// Prepare a document copy with an already encoded project and no VBA signatures.
 /// The caller owns source compilation/encoding, revision checks and atomic IO.
 pub fn prepare_edited_vba_package(doc: &Document, expected: &[u8], edited: &[u8]) -> Result<Document, DocxError> {
-    use crate::package::{MAX_VBA_RELATED, VBA_PROJECT_PART, VBA_RELATED};
+    const MAX_VBA_RELATED: usize = 64;
+    const VBA_PROJECT_PART: &str = "word/vbaProject.bin";
+    const VBA_RELATED: &str = "wordcraft:vbaProject.related";
     let fail = |s: &str| DocxError::Xml(s.into());
     if doc.passthrough.get(VBA_PROJECT_PART).map(|b| b.as_slice()) != Some(expected) {
         return Err(fail("VBA project changed during save"));
@@ -99,5 +101,79 @@ mod tests {
         unsupported.passthrough.insert("wordcraft:vbaProject.related".into(), Arc::new(b"data\t../document.xml\tapplication/xml\n".to_vec()));
         assert!(prepare_edited_vba_package(&unsupported, b"original", edited).is_err());
         assert_eq!(doc.passthrough.get("word/vbaProject.bin").map(|b| b.as_slice()), Some(b"original".as_slice()));
+    }
+}
+
+/// A package rewrite invalidates OPC signatures; VBA project signatures remain opaque.
+/// The shared reader retains these roots, so discard them at the application boundary.
+pub(crate) fn discard_package_signatures(doc: &mut Document) {
+    const ROOTS: &str = "wordcraft:unmodelled.roots";
+    const PARTS: &str = "wordcraft:embedded.parts";
+    const REL: &str = "http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/";
+    let signature_parts: std::collections::BTreeSet<String> = doc
+        .passthrough
+        .get(PARTS)
+        .map(|bytes| {
+            String::from_utf8_lossy(bytes)
+                .lines()
+                .filter_map(|line| {
+                    let fields: Vec<_> = line.split('\t').collect();
+                    match fields.as_slice() {
+                        ["P", name, content_type] if content_type.starts_with("application/vnd.openxmlformats-package.digital-signature-") => {
+                            Some((*name).to_owned())
+                        }
+                        _ => None,
+                    }
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    for key in [ROOTS, PARTS] {
+        let Some(bytes) = doc.passthrough.get(key) else { continue };
+        let kept: String = String::from_utf8_lossy(bytes)
+            .lines()
+            .filter(|line| {
+                let fields: Vec<_> = line.split('\t').collect();
+                !fields.iter().any(|field| field.starts_with(REL))
+                    && !(key == PARTS && fields.get(1).is_some_and(|name| signature_parts.contains(*name)))
+            })
+            .map(|line| format!("{line}\n"))
+            .collect();
+        if kept.is_empty() {
+            doc.passthrough.remove(key);
+        } else {
+            doc.passthrough.insert(key.into(), Arc::new(kept.into_bytes()));
+        }
+    }
+    doc.passthrough.retain(|name, _| !signature_parts.contains(name));
+}
+
+#[cfg(test)]
+mod package_signature_tests {
+    use super::*;
+
+    #[test]
+    fn read_discards_invalidated_opc_signature_but_keeps_vba_signature() {
+        let mut doc = Document::default();
+        doc.passthrough.insert("word/vbaProject.bin".into(), Arc::new(b"original".to_vec()));
+        doc.passthrough.insert("word/vbaSignature.bin".into(), Arc::new(b"vba signature".to_vec()));
+        doc.passthrough.insert("wordcraft:vbaProject.related".into(), Arc::new(
+            b"http://schemas.microsoft.com/office/2006/relationships/vbaProjectSignature\tword/vbaSignature.bin\tapplication/vnd.ms-office.vbaProjectSignature\n".to_vec()));
+        doc.passthrough.insert("_xmlsignatures/origin.sigs".into(), Arc::new(Vec::new()));
+        doc.passthrough.insert(
+            "wordcraft:unmodelled.roots".into(),
+            Arc::new(
+                b"P\thttp://schemas.openxmlformats.org/package/2006/relationships/digital-signature/origin\t_xmlsignatures/origin.sigs\n".to_vec(),
+            ),
+        );
+        doc.passthrough.insert(
+            "wordcraft:embedded.parts".into(),
+            Arc::new(b"P\t_xmlsignatures/origin.sigs\tapplication/vnd.openxmlformats-package.digital-signature-origin\n".to_vec()),
+        );
+        let bytes = crate::write_as(&doc, crate::Flavor::MacroDocument).unwrap();
+        let back = crate::read(&bytes).unwrap();
+        assert!(!back.passthrough.contains_key("wordcraft:unmodelled.roots"));
+        assert!(!back.passthrough.contains_key("_xmlsignatures/origin.sigs"));
+        assert_eq!(back.passthrough.get("word/vbaSignature.bin"), doc.passthrough.get("word/vbaSignature.bin"));
     }
 }

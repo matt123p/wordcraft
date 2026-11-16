@@ -237,6 +237,7 @@ impl<'a> Exempt<'a> {
             || plain == "Figure 1" // the caption dialog's sample: the label goes into the document as is
             || plain == "Untitled Project" // the shared VBA editor's default project title: authored data
             || plain == "Main" // the default entry procedure name: authored data
+            || crate::dialogs_insert::date_time_preview_matches(plain)
     }
 }
 

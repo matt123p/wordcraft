@@ -23,3 +23,13 @@ environment; the fit-to-page failures have not been independently diagnosed.
 Later workspace test binaries, the translation audit and the language gate were
 not reached by that run. Historical milestone receipts in this folder retain
 their original revision scope.
+
+## Main framework alignment
+
+DOCX parsing and writing use main's `craft-docx` implementation and model bridge;
+no copy of the old local DOCX parser or writer is retained. The local writeback
+adapter only supplies the VBA-specific edited-copy and signature policy.
+VBA package acceptance fixtures use main's bounded `craft-zip` Archive and Writer
+APIs. The extra direct ZIP 3 dependency and its unused dependencies are removed.
+
+The migrated package acceptance suite passes all six cases using `craft-zip`.

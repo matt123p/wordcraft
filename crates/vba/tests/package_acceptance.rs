@@ -1,6 +1,5 @@
 //! M7 authored DOCM package acceptance; no Office observation or signature validation claim.
 mod support;
-use std::io::{Cursor, Read};
 use std::sync::Arc;
 use vba_ide::{Action, Mode};
 use wordcraft_doc::{Document, StoryRef};
@@ -25,11 +24,11 @@ fn package() -> Vec<u8> {
     ).as_bytes().to_vec()));
     write_as(&doc, Flavor::MacroDocument).unwrap()
 }
+fn archive(bytes: &[u8]) -> craft_zip::Archive<'_> {
+    craft_zip::Archive::open(bytes, craft_zip::Limits { max_entries: 10_000, max_total_bytes: 64 << 20 }).unwrap()
+}
 fn part(bytes: &[u8], name: &str) -> Vec<u8> {
-    let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
-    let mut data = vec![];
-    zip.by_name(name).unwrap().read_to_end(&mut data).unwrap();
-    data
+    archive(bytes).read(name, 16 << 20).unwrap().unwrap()
 }
 #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
@@ -148,30 +147,25 @@ fn packaged_withevents_subscription_cancels_save_and_reset_disconnects_it() {
 #[cfg_attr(all(target_arch = "wasm32", target_os = "unknown"), wasm_bindgen_test::wasm_bindgen_test)]
 #[cfg_attr(not(all(target_arch = "wasm32", target_os = "unknown")), test)]
 fn rewritten_word_package_invalidates_package_signature_but_keeps_original_vba_signature_bytes() {
-    use std::io::Write;
     let input = package();
-    let mut zip = zip::ZipArchive::new(Cursor::new(&input)).unwrap();
-    let mut out = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    let mut zip = archive(&input);
+    let mut out = craft_zip::Writer::new();
     for i in 0..zip.len() {
-        let mut f = zip.by_index(i).unwrap();
-        let name = f.name().to_string();
-        let mut data = Vec::new();
-        f.read_to_end(&mut data).unwrap();
+        let name = zip.entry_name(i).unwrap().unwrap();
+        let mut data = zip.read(&name, 16 << 20).unwrap().unwrap();
         if name == "_rels/.rels" {
             data = String::from_utf8(data).unwrap().replace("</Relationships>",
                 "<Relationship Id=\"package-signature\" Type=\"http://schemas.openxmlformats.org/package/2006/relationships/digital-signature/origin\" Target=\"_xmlsignatures/origin.xml\"/></Relationships>"
             ).into_bytes();
         }
-        out.start_file(&name, zip::write::SimpleFileOptions::default()).unwrap();
-        out.write_all(&data).unwrap();
+        out.add(&name, &data, craft_zip::Compression::Deflated).unwrap();
     }
-    out.start_file("_xmlsignatures/origin.xml", zip::write::SimpleFileOptions::default()).unwrap();
-    out.write_all(b"<authored-package-signature/>").unwrap();
-    let signed = out.finish().unwrap().into_inner();
+    out.add("_xmlsignatures/origin.xml", b"<authored-package-signature/>", craft_zip::Compression::Deflated).unwrap();
+    let signed = out.finish().unwrap();
     let doc = read(&signed).unwrap();
     let output = write_as(&doc, Flavor::MacroDocument).unwrap();
-    let mut back = zip::ZipArchive::new(Cursor::new(&output)).unwrap();
-    assert!(back.by_name("_xmlsignatures/origin.xml").is_err());
+    let back = archive(&output);
+    assert!(!back.contains("_xmlsignatures/origin.xml"));
     assert!(!String::from_utf8(part(&output, "_rels/.rels")).unwrap().contains("digital-signature/origin"));
     assert_eq!(part(&output, "word/vbaProjectSignature.bin"), part(&input, "word/vbaProjectSignature.bin"));
 }

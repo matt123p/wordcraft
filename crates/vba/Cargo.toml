@@ -24,7 +24,7 @@ vba-project = { git = "https://github.com/matt123p/tiny-vba", tag = "v0.0.1" }
 wordcraft-docx = { workspace = true }
 cfb = "=0.14.0"
 web-time = { workspace = true }
-zip = { workspace = true }
+craft-zip = { workspace = true }
 
 [target.'cfg(all(target_arch = "wasm32", target_os = "unknown"))'.dev-dependencies]
 wasm-bindgen-test = "=0.3.79"

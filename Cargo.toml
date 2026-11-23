@@ -37,9 +37,9 @@ wordcraft-zotero = { path = "crates/zotero" }
 wordcraft-control-key = { path = "crates/control-key" }
 wordcraft-ui-egui = { path = "crates/ui-egui" }
 wordcraft-vba = { path = "crates/vba" }
-vba-foreign = { git = "https://github.com/matt123p/tiny-vba", tag = "v0.0.2" }
-vba-ide = { git = "https://github.com/matt123p/tiny-vba", tag = "v0.0.2" }
-vba-values = { git = "https://github.com/matt123p/tiny-vba", tag = "v0.0.2" }
+vba-foreign = { git = "https://github.com/matt123p/tiny-vba", tag = "v0.0.3" }
+vba-ide = { git = "https://github.com/matt123p/tiny-vba", tag = "v0.0.3" }
+vba-values = { git = "https://github.com/matt123p/tiny-vba", tag = "v0.0.3" }
 craft-metafile = { git = "https://github.com/storytold/craft-libs", rev = "41fb227542efb8a7748caa1c659f271d8605303c", version = "=0.1.0" }
 
 # foundation
